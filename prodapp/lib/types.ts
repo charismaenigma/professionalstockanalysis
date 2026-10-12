@@ -1,4 +1,4 @@
-export type ScoreBand = 'Elite Opportunity' | 'Strong Candidate' | 'Watchlist' | 'Research Only' | 'Pass';
+export type ScoreBand = 'Elite Opportunity' | 'Strong Candidate' | 'Watchlist' | 'Research Only' | 'Pass' | 'Not Rated';
 
 export interface Quote {
   symbol: string;
@@ -141,7 +141,7 @@ export interface ScoreComponent {
 }
 
 export interface ModelScore {
-  score: number;
+  score: number | null;
   band: ScoreBand;
   components: ScoreComponent[];
   vetoes: string[];
@@ -170,6 +170,9 @@ export interface BenchmarkResult {
 }
 
 export interface AnalysisResult {
+  marketClassification?: 'OTC' | 'Listed' | 'Unknown';
+  priceDataAgeDays?: number;
+  assessmentWarnings?: string[];
   symbol: string;
   companyName: string;
   mode: 'live' | 'demo';
