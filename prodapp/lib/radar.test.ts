@@ -56,7 +56,7 @@ describe('Daily Radar full-model qualification',()=>{
   function data(scores:[number|null,number|null,number|null,number|null],status:'Pass'|'Watch'|'Qualified Trade'='Pass'){
     return {
       mode:'live',instrumentType:'Stock',marketClassification:'Unknown',symbol:'PLTR',
-      quote:{symbol:'PLTR',price:209.05,timestamp:'2026-10-09'},
+      quote:{symbol:'PLTR',price:209.05,timestamp:'2026-10-09',avgVolume:1_800_000},
       priceDataAgeDays:3,assessmentWarnings:[],dataCompleteness:93,
       scores:{core:score(scores[0]),growth:score(scores[1]),asymmetric:score(scores[2]),swing:score(scores[3])},
       tradePlan:{status,reasoning:[]}
@@ -82,5 +82,18 @@ describe('Daily Radar full-model qualification',()=>{
     const lead=qualifyRadarLead(row,data([94,96,85,92],'Qualified Trade'));
     expect(lead?.verified?.featuredScore).toBe(96);
     expect(lead?.verified?.verdict).toBe('Elite (95+)');
+  });
+});
+
+describe('strong featured-stock risk gates',()=>{
+  // The full-model screen cannot promote thinly traded securities simply
+  // because their mechanical score happens to be above 80.
+  it('remains deterministic about deep-score ranking, not Radar Priority',()=>{
+    const rows=[row('AAA',12),row('BBB',15)];
+    const prior=[row('AAA',10,true),row('BBB',14,true)];
+    const report=screenDailyRadar(rows,prior,'2026-10-09','2026-10-08');
+    expect(report.review).toBeUndefined();
+    expect(report.marketPulse?.eligibleCount).toBe(2);
+    expect(report.marketPulse?.advancing).toBe(2);
   });
 });
