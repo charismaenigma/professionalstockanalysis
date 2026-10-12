@@ -7,6 +7,7 @@ import { recentSecFilings } from './sec';
 import { technicalSnapshot } from './indicators';
 import { buildScores } from './scoring';
 import { knownFund, notApplicableScore, scoreFundCore, fundTimingSummary } from './funds';
+import { knownLeveraged, researchAlternatives, leveragedContext } from './leveraged';
 import { demoBars, demoCatalysts, demoFundamentals, demoQuote, demoSymbols } from './demo';
 
 function completeness(f:FundamentalSnapshot,bars:number){
@@ -93,14 +94,15 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   let catalysts:CatalystItem[]=[];
   let cik:string|undefined;
   let marketClassification:'OTC'|'Listed'|'Unknown'='Unknown';
-  let instrumentType:'Stock'|'ETF'=knownFund(symbol)?'ETF':'Stock';
+  const leverage=knownLeveraged(symbol);
+  let instrumentType:'Stock'|'ETF'=(knownFund(symbol)||leverage)?'ETF':'Stock';
 
   if(hasMassive){
     bars=await massiveStockBars(symbol);
     quote=quoteFromBars(symbol,bars,symbol);
     const reference=await massiveMarketClassification(symbol).catch(()=>({market:'Unknown' as const,name:undefined as string|undefined,isEtf:false}));
     marketClassification=reference.market;
-    instrumentType=(knownFund(symbol)||reference.isEtf)?'ETF':'Stock';
+    instrumentType=(knownFund(symbol)||leverage||reference.isEtf)?'ETF':'Stock';
     quote.name=knownFund(symbol)?.name||reference.name||symbol;
     if(instrumentType==='ETF'){
       // An ETF owns a basket of securities. It does not have one company's
@@ -126,7 +128,7 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
     catalysts=demoCatalysts(use);
     companyName=quote.name||use;
     quote={...quote,symbol:use};
-    instrumentType=knownFund(use)?'ETF':'Stock';
+    instrumentType=(knownFund(use)||knownLeveraged(use))?'ETF':'Stock';
     if(instrumentType==='ETF'){
       fundamentals={warnings:[]};
       companyName=knownFund(use)?.name||quote.name||use;
@@ -150,11 +152,17 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
 
   const built=instrumentType==='ETF'
     ?{
-      core:scoreFundCore(symbol),
-      growth:notApplicableScore('Company-specific growth model is not applicable to a fund that owns many businesses.'),
+      core:leverage
+        ?notApplicableScore('A daily 3x leveraged or inverse fund must not be scored as a long-term diversified core holding. Assess daily index exposure, leverage, volatility, and real-time execution instead.')
+        :scoreFundCore(symbol),
+      growth:notApplicableScore('Company-specific growth model is not applicable to an ETF.'),
       asymmetric:notApplicableScore('Single-company multi-bagger / turnaround model is not applicable to a diversified ETF.'),
-      swing:notApplicableScore('A standalone ETF swing-trading strategy has not yet been validated. See the separate market-timing assessment instead.'),
-      tradePlan:{status:'Pass' as const,reasoning:['No active ETF swing-trading plan is generated. Market timing is informational, not an entry/exit strategy.']}
+      swing:notApplicableScore(leverage
+        ?'Day-trading readiness not rated: end-of-day OHLCV cannot verify current intraday quotes, spreads, liquidity, or an entry/stop strategy.'
+        :'A standalone ETF swing-trading strategy has not yet been validated. See the separate market-timing assessment instead.'),
+      tradePlan:{status:'Pass' as const,reasoning:[leverage
+        ?'No actionable day trade: the current provider plan supplies end-of-day data, not current intraday order-book/quote data. Check live underlying-index direction, ETF bid/ask spreads, trading halts, liquidity, and intraday confirmation before considering a plan.'
+        :'No active ETF swing-trading plan is generated. Market timing is informational, not an entry/exit strategy.']}
     }
     :buildScores(fundamentals,technicals,quote,catalysts,dataCompleteness,{
       isOtc:marketClassification==='OTC',
@@ -164,7 +172,15 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   let options:OptionContract[]=[];
   if(hasMassive&&instrumentType!=='ETF')options=optionShortlist(await massiveOptions(symbol).catch(()=>[]),quote.price);
 
-  const copy=instrumentType==='ETF'
+  const copy=leverage
+    ?{
+      simpleSummary:`${leverage.symbol} targets ${leverage.dailyMultiple>0?'+':''}${leverage.dailyMultiple}x the ${leverage.index}'s DAILY move. It is designed for short-term directional exposure, not to compound at the target multiple over weeks or years. The current data are end-of-day, so MarketClarity cannot verify a real-time trade or recommend an entry.`,
+      likes:['This fund provides a clearly defined daily bullish or bearish exposure to its index. This is a product characteristic, not evidence of a profitable trade.'],
+      concerns:['Daily leverage magnifies losses as well as gains. A severe unfavorable index move can produce substantial losses.','Daily reset and compounding can make longer holding-period returns differ substantially from 3x or -3x the index return.','The available market feed has no current bid/ask spreads, live 1- and 5-minute chart, or verified intraday order flow.','A trend score from yesterday cannot determine whether this instrument is safe to trade right now.'],
+      improve:['Use a validated intraday setup with current 1- and 5-minute data and volume.','Check the underlying index, current ETF bid/ask spread, volatility, order execution and the strategy’s stop and position size.','Compare the inverse fund or another index family before selecting a direction.'],
+      psychology:['A 3x product can move dramatically. Do not chase a large price change without a pre-defined loss limit.']
+    }
+    :instrumentType==='ETF'
     ?{
       simpleSummary:profile
         ?`${profile.name} is a diversified investment fund, not an individual business. Its high structural-quality rating reflects low costs, broad exposure and clear index design; the score does not guarantee returns. ${fundTiming==null?'Current timing data are too old to assess.':fundTimingSummary(technicals,fundTiming)}`
@@ -187,7 +203,8 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   if(!hasMassive)warnings.push('Demo mode is active. Add MASSIVE_API_KEY to enable end-of-day market data and SEC-based fundamentals.');
   if(hasMassive)warnings.push('Market prices are end-of-day on the free Massive Stocks plan, not real-time quotes.');
   if(hasMassive&&instrumentType!=='ETF'&&dataCompleteness<60)warnings.push('Some fundamental fields were not available from SEC XBRL facts, so the model reduced confidence rather than inventing values.');
-  if(instrumentType==='ETF')warnings.push('Fund-quality scores are structural policy assessments based on fund characteristics, not live holdings audits or predicted returns. ETFs are analyzed differently from individual companies.');
+  if(instrumentType==='ETF'&&!leverage)warnings.push('Fund-quality scores are structural policy assessments based on fund characteristics, not live holdings audits or predicted returns. ETFs are analyzed differently from individual companies.');
+  if(leverage)warnings.push('Leveraged ETF: daily exposure resets each day. Longer holding periods can deviate significantly from the headline daily multiple; substantial losses are possible. No live day-trade setup is available on this market-data plan.');
   if(!process.env.OPENAI_API_KEY)warnings.push('Optional AI research summaries are disabled until OPENAI_API_KEY is configured.');
   const assessmentWarnings:string[]=[];
   if(hasMassive&&priceIsStale)assessmentWarnings.push(`The last available price is ${priceDataAgeDays??'an unknown number of'} calendar days old. It is not a current executable quote.`);
@@ -195,10 +212,16 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   if(hasMassive&&marketClassification==='OTC')assessmentWarnings.push('OTC security: verify its current OTC Markets disclosure tier, trading eligibility, regulatory warnings, and bid/ask spread. This app does not currently have licensed OTC disclosure-status data.');
   if(hasMassive&&((quote.avgVolume??quote.volume??0)*quote.price)<50000)assessmentWarnings.push('Very low dollar trading volume can make historical price-based technical signals and modeled stop-losses unreliable.');
   if(hasMassive&&built.core.score===null)assessmentWarnings.push(instrumentType==='ETF'
-    ?'This fund is not yet covered by the specialized ETF-quality model.'
+    ?(leverage?'This is a daily-leveraged ETF. It is intentionally not assigned a diversified long-term fund-quality score.':'This fund is not yet covered by the specialized ETF-quality model.')
     :'Financial reports are insufficient or too old for a defensible investment rating.');
 
   return {
+    leveragedFund:leverage?{
+      symbol:leverage.symbol,name:leverage.name,index:leverage.index,
+      direction:leverage.direction,dailyMultiple:leverage.dailyMultiple,sourceUrl:leverage.sourceUrl
+    }:undefined,
+    leveragedContext:leverage?leveragedContext(leverage,technicals,quote):undefined,
+    leveragedAlternatives:leverage?researchAlternatives(symbol,technicals.trend,benchmarks):undefined,
     instrumentType,
     fundProfile:profile?{
       tracks:profile.tracks,portfolioDescription:profile.portfolioDescription,
