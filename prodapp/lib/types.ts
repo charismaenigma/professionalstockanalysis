@@ -35,6 +35,9 @@ export interface FinancialStatement {
   ebitda?: number;
   totalAssets?: number;
   totalCurrentAssets?: number;
+  marketableSecurities?: number;
+  incomeTaxExpense?: number;
+  pretaxIncome?: number;
   cashAndCashEquivalents?: number;
   totalDebt?: number;
   totalCurrentLiabilities?: number;
@@ -75,7 +78,9 @@ export interface FundamentalSnapshot {
   insiderOwnership?: number;
   shortFloat?: number;
   cash?: number;
+  marketableSecurities?: number;
   debt?: number;
+  valuationAsOf?: string;
   latestAnnual?: FinancialStatement;
   priorAnnual?: FinancialStatement;
   latestQuarter?: FinancialStatement;
@@ -145,6 +150,9 @@ export interface ModelScore {
   band: ScoreBand;
   components: ScoreComponent[];
   vetoes: string[];
+  modelVersion?: string;
+  confidence?: 'High' | 'Moderate' | 'Low';
+  missingInputs?: string[];
 }
 
 export interface TradePlan {
@@ -206,6 +214,7 @@ export interface AnalysisResult {
   catalysts: CatalystItem[];
   options: OptionContract[];
   scores: {
+    business?: ModelScore;
     core: ModelScore;
     growth: ModelScore;
     asymmetric: ModelScore;
@@ -220,4 +229,5 @@ export interface AnalysisResult {
   psychology: string[];
   dataCompleteness: number;
   warnings: string[];
+  scoringModelVersion?: string;
 }
