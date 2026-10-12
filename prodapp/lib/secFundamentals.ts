@@ -1,4 +1,5 @@
 import type { FinancialStatement, FundamentalSnapshot } from './types';
+import { matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths } from './secPeriods';
 
 const ua=()=>process.env.SEC_USER_AGENT||'MarketClarity research app contact@example.com';
 const headers={'User-Agent':ua(),'Accept-Encoding':'gzip, deflate'};
@@ -74,44 +75,65 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
   const shares=concept(facts,['WeightedAverageNumberOfDilutedSharesOutstanding'],['shares']);
 
   const ay=(rows:FactRow[],i=0)=>v(annual(rows,i));
-  const qy=(rows:FactRow[],i=0)=>v(quarter(rows,i));
-  const iy=(rows:FactRow[],i=0)=>v(instant(rows,['10-K','10-Q'],i));
+  const qAt=(rows:FactRow[],endDate?:string)=>v(singleQuarterAt(rows,endDate));
+  // Unlike "instant(rows, i)", this only compares balance-sheet values
+  // from the SAME fiscal reporting date.
+  const iAt=(rows:FactRow[],endDate?:string)=>{
+    if(!endDate)return undefined;
+    const matching=rows.filter(x=>(x.form==='10-Q'||x.form==='10-K')&&x.end===endDate&&!x.start)
+      .sort((a,b)=>String(b.filed??'').localeCompare(String(a.filed??'')));
+    return v(matching[0]);
+  };
 
   const makeAnnual=(i:number):FinancialStatement=>{
+    const endDate=annual(revenue,i)?.end;
     const rev=ay(revenue,i), oc=ay(ocf,i), cx=ay(capex,i);
     return {
-      date:annual(revenue,i)?.end,period:'FY',revenue:rev,grossProfit:ay(gross,i),operatingIncome:ay(opIncome,i),netIncome:ay(net,i),eps:ay(eps,i),
-      totalAssets:iy(assets,i),totalCurrentAssets:iy(currentAssets,i),cashAndCashEquivalents:iy(cash,i),totalDebt:iy(debt,i),totalCurrentLiabilities:iy(currentLiab,i),
-      totalStockholdersEquity:iy(equity,i),operatingCashFlow:oc,capitalExpenditure:cx,freeCashFlow:oc!=null&&cx!=null?oc-cx:undefined,
+      date:endDate,period:'FY',revenue:rev,grossProfit:ay(gross,i),operatingIncome:ay(opIncome,i),netIncome:ay(net,i),eps:ay(eps,i),
+      totalAssets:iAt(assets,endDate),totalCurrentAssets:iAt(currentAssets,endDate),cashAndCashEquivalents:iAt(cash,endDate),
+      totalDebt:iAt(debt,endDate),totalCurrentLiabilities:iAt(currentLiab,endDate),
+      totalStockholdersEquity:iAt(equity,endDate),operatingCashFlow:oc,capitalExpenditure:cx,
+      freeCashFlow:oc!=null&&cx!=null?oc-cx:undefined,
       stockBasedCompensation:ay(sbc,i),weightedAverageShsOutDil:ay(shares,i)
     };
   };
-  const makeQuarter=(i:number):FinancialStatement=>({
-    date:quarter(revenue,i)?.end,period:'Q',revenue:qy(revenue,i),grossProfit:qy(gross,i),operatingIncome:qy(opIncome,i),netIncome:qy(net,i),eps:qy(eps,i),
-    totalAssets:iy(assets,i),totalCurrentAssets:iy(currentAssets,i),cashAndCashEquivalents:iy(cash,i),totalDebt:iy(debt,i),totalCurrentLiabilities:iy(currentLiab,i),
-    totalStockholdersEquity:iy(equity,i),freeCashFlow:undefined,weightedAverageShsOutDil:qy(shares,i)
+  const makeQuarter=(endDate?:string):FinancialStatement=>({
+    date:endDate,period:'Q',revenue:qAt(revenue,endDate),grossProfit:qAt(gross,endDate),
+    operatingIncome:qAt(opIncome,endDate),netIncome:qAt(net,endDate),eps:qAt(eps,endDate),
+    totalAssets:iAt(assets,endDate),totalCurrentAssets:iAt(currentAssets,endDate),
+    cashAndCashEquivalents:iAt(cash,endDate),totalDebt:iAt(debt,endDate),
+    totalCurrentLiabilities:iAt(currentLiab,endDate),totalStockholdersEquity:iAt(equity,endDate),
+    freeCashFlow:undefined,weightedAverageShsOutDil:qAt(shares,endDate)
   });
-
-  const latestAnnual=makeAnnual(0), priorAnnual=makeAnnual(1), latestQuarter=makeQuarter(0), priorQuarter=makeQuarter(4);
-  const rev=latestAnnual.revenue, ni=latestAnnual.netIncome, eq=latestAnnual.totalStockholdersEquity, sh=latestAnnual.weightedAverageShsOutDil;
+  const latestAnnual=makeAnnual(0), priorAnnual=makeAnnual(1);
+  const latestQ=quarter(revenue,0);
+  const sameQuarterLastYear=matchedYearAgoQuarter(revenue,latestQ);
+  const latestQuarter=makeQuarter(latestQ?.end);
+  const priorQuarter=makeQuarter(sameQuarterLastYear?.end);
+  const mostRecentBalance=latestQuarter.date&&latestAnnual.date&&latestQuarter.date>latestAnnual.date
+    ?latestQuarter:latestAnnual;
+  const rev=latestAnnual.revenue, ni=latestAnnual.netIncome, eq=latestAnnual.totalStockholdersEquity;
+  const sh=latestQuarter.weightedAverageShsOutDil??latestAnnual.weightedAverageShsOutDil;
   const marketCap=price!=null&&sh!=null?price*sh:undefined;
   const fcf=latestAnnual.freeCashFlow;
-  const debtVal=latestAnnual.totalDebt??0, cashVal=latestAnnual.cashAndCashEquivalents??0;
+  const debtVal=mostRecentBalance.totalDebt??0, cashVal=mostRecentBalance.cashAndCashEquivalents??0;
   const ev=marketCap!=null?marketCap+debtVal-cashVal:undefined;
+  const ttmEps=trailingTwelveMonths(eps);
   const warnings:string[]=[];
   const sharesGrowth=growth(latestAnnual.weightedAverageShsOutDil,priorAnnual.weightedAverageShsOutDil);
   if(sharesGrowth!=null&&sharesGrowth>10)warnings.push(`Diluted share count increased about ${sharesGrowth.toFixed(1)}% year over year.`);
   if(fcf!=null&&fcf<0)warnings.push('Free cash flow is negative in the latest annual filing.');
+  if(price!=null&&ttmEps==null)warnings.push('Trailing-twelve-month earnings per share could not be reliably reconstructed from SEC filings; P/E is not available.');
 
   const snapshot:FundamentalSnapshot={
-    priceToEarnings:price!=null&&latestAnnual.eps&&latestAnnual.eps>0?price/latestAnnual.eps:undefined,
+    priceToEarnings:price!=null&&ttmEps!=null&&ttmEps>0?price/ttmEps:undefined,
     priceToSales:marketCap!=null&&rev?marketCap/rev:undefined,
     priceToBook:marketCap!=null&&eq?marketCap/eq:undefined,
     enterpriseValue:ev,
     evToSales:ev!=null&&rev?ev/rev:undefined,
     priceToFreeCashFlow:marketCap!=null&&fcf&&fcf>0?marketCap/fcf:undefined,
-    currentRatio:latestAnnual.totalCurrentAssets!=null&&latestAnnual.totalCurrentLiabilities?latestAnnual.totalCurrentAssets/latestAnnual.totalCurrentLiabilities:undefined,
-    debtToEquity:latestAnnual.totalDebt!=null&&eq?latestAnnual.totalDebt/eq:undefined,
+    currentRatio:mostRecentBalance.totalCurrentAssets!=null&&mostRecentBalance.totalCurrentLiabilities?mostRecentBalance.totalCurrentAssets/mostRecentBalance.totalCurrentLiabilities:undefined,
+    debtToEquity:mostRecentBalance.totalDebt!=null&&mostRecentBalance.totalStockholdersEquity?mostRecentBalance.totalDebt/mostRecentBalance.totalStockholdersEquity:undefined,
     returnOnEquity:ni!=null&&eq?ni/eq*100:undefined,
     grossMargin:latestAnnual.grossProfit!=null&&rev?latestAnnual.grossProfit/rev*100:undefined,
     operatingMargin:latestAnnual.operatingIncome!=null&&rev?latestAnnual.operatingIncome/rev*100:undefined,
@@ -119,7 +141,7 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     freeCashFlowMargin:fcf!=null&&rev?fcf/rev*100:undefined,
     revenueGrowth:growth(latestQuarter.revenue,priorQuarter.revenue)??growth(latestAnnual.revenue,priorAnnual.revenue),
     epsGrowth:growth(latestQuarter.eps,priorQuarter.eps)??growth(latestAnnual.eps,priorAnnual.eps),
-    sharesGrowth,cash:latestAnnual.cashAndCashEquivalents,debt:latestAnnual.totalDebt,
+    sharesGrowth,cash:mostRecentBalance.cashAndCashEquivalents,debt:mostRecentBalance.totalDebt,
     latestAnnual,priorAnnual,latestQuarter,priorQuarter,warnings
   };
   return {snapshot,companyName:info.name,cik:info.cik};
