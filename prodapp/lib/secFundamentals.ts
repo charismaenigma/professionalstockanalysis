@@ -74,7 +74,10 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
   const longInvestments=concept(facts,['LongTermInvestments','MarketableSecuritiesNoncurrent','AvailableForSaleSecuritiesNoncurrent'],['USD']);
   const incomeTax=concept(facts,['IncomeTaxExpenseBenefit'],['USD']);
   const pretax=concept(facts,['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest','IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],['USD']);
-  const debt=concept(facts,['LongTermDebtAndFinanceLeaseObligations','LongTermDebt','LongTermDebtNoncurrent'],['USD']);
+  const debtTotal=concept(facts,['LongTermDebtAndFinanceLeaseObligations','LongTermDebt'],['USD']);
+  const debtCurrent=concept(facts,['LongTermDebtCurrent','LongTermDebtAndFinanceLeaseObligationsCurrent'],['USD']);
+  const debtNoncurrent=concept(facts,['LongTermDebtNoncurrent','LongTermDebtAndFinanceLeaseObligationsNoncurrent'],['USD']);
+  const shortBorrowings=concept(facts,['CommercialPaper','ShortTermBorrowings'],['USD']);
   const ocf=concept(facts,['NetCashProvidedByUsedInOperatingActivities'],['USD']);
   const capex=concept(facts,['PaymentsToAcquirePropertyPlantAndEquipment'],['USD']);
   const sbc=concept(facts,['ShareBasedCompensation'],['USD']);
@@ -91,13 +94,23 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     return v(matching[0]);
   };
 
+  const debtAt=(endDate?:string)=>{
+    const current=iAt(debtCurrent,endDate),noncurrent=iAt(debtNoncurrent,endDate);
+    // When both components are reported, they give the clearest debt
+    // breakdown; never add an already aggregated LongTermDebt on top.
+    const termDebt=current!=null&&noncurrent!=null
+      ?current+noncurrent
+      :iAt(debtTotal,endDate)??noncurrent??current;
+    const paper=iAt(shortBorrowings,endDate);
+    return termDebt!=null||paper!=null?(termDebt??0)+(paper??0):undefined;
+  };
   const makeAnnual=(i:number):FinancialStatement=>{
     const endDate=annual(revenue,i)?.end;
     const rev=ay(revenue,i), oc=ay(ocf,i), cx=ay(capex,i);
     return {
       date:endDate,period:'FY',revenue:rev,marketableSecurities:(()=>{const a=iAt(shortInvestments,endDate),b=iAt(longInvestments,endDate);return a!=null||b!=null?(a??0)+(b??0):undefined})(),incomeTaxExpense:ay(incomeTax,i),pretaxIncome:ay(pretax,i),grossProfit:ay(gross,i),operatingIncome:ay(opIncome,i),netIncome:ay(net,i),eps:ay(eps,i),
       totalAssets:iAt(assets,endDate),totalCurrentAssets:iAt(currentAssets,endDate),cashAndCashEquivalents:iAt(cash,endDate),
-      totalDebt:iAt(debt,endDate),totalCurrentLiabilities:iAt(currentLiab,endDate),
+      totalDebt:debtAt(endDate),totalCurrentLiabilities:iAt(currentLiab,endDate),
       totalStockholdersEquity:iAt(equity,endDate),operatingCashFlow:oc,capitalExpenditure:cx,
       freeCashFlow:oc!=null&&cx!=null?oc-cx:undefined,
       stockBasedCompensation:ay(sbc,i),weightedAverageShsOutDil:ay(shares,i)
