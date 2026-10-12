@@ -162,6 +162,7 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
 
   const built=instrumentType==='ETF'
     ?{
+      business:notApplicableScore('An ETF owns many companies and does not have a single-company business-strength rating.'),
       core:leverage
         ?notApplicableScore('A daily 3x leveraged or inverse fund must not be scored as a long-term diversified core holding. Assess daily index exposure, leverage, volatility, and real-time execution instead.')
         :scoreFundCore(symbol),
@@ -254,7 +255,8 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
     technicals,
     catalysts,
     options,
-    scores:{core:built.core,growth:built.growth,asymmetric:built.asymmetric,swing:built.swing},
+    scores:{business:built.business,core:built.core,growth:built.growth,asymmetric:built.asymmetric,swing:built.swing},
+    scoringModelVersion:instrumentType==='ETF'?'ETF structural rules v1':'MarketClarity research v2.0',
     tradePlan:built.tradePlan,
     benchmarks,
     simpleSummary:copy.simpleSummary,
