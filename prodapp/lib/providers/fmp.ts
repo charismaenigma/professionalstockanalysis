@@ -16,9 +16,7 @@ export async function fmpQuote(symbol:string):Promise<Quote>{
     return {symbol, name:q.name, price:n(q.price)??n(q.previousClose)??0, change:n(q.change), changePercent:n(q.changePercentage)??n(q.changesPercentage), volume:n(q.volume), avgVolume:n(q.avgVolume), marketCap:n(q.marketCap), yearHigh:n(q.yearHigh), yearLow:n(q.yearLow), timestamp:new Date().toISOString()};
   }catch(err:any){
     if(!String(err?.message||'').includes('(402)')) throw err;
-    const to=new Date().toISOString().slice(0,10);
-    const from=new Date(Date.now()-14*86400000).toISOString().slice(0,10);
-    const a:any[]=await get('/historical-price-eod/light',{symbol,from,to});
+    const a:any[]=await get('/historical-price-eod/light',{symbol});
     const rows=(a??[]).sort((x:any,y:any)=>String(x.date).localeCompare(String(y.date)));
     const last=rows.at(-1), prev=rows.at(-2);
     if(!last) throw new Error('Ticker not found or unavailable on the current FMP plan.');
@@ -35,11 +33,11 @@ export async function fmpBars(symbol:string,days=420):Promise<Bar[]>{
     return (a??[]).map(x=>({date:String(x.date),open:n(x.open)??0,high:n(x.high)??0,low:n(x.low)??0,close:n(x.close)??0,volume:n(x.volume)??0,vwap:n(x.vwap)})).filter(x=>x.close>0).sort((a,b)=>a.date.localeCompare(b.date));
   }catch(err:any){
     if(!String(err?.message||'').includes('(402)')) throw err;
-    const a:any[]=await get('/historical-price-eod/light',{symbol,from,to});
+    const a:any[]=await get('/historical-price-eod/light',{symbol});
     return (a??[]).map(x=>{
       const price=n(x.price)??0;
       return {date:String(x.date),open:price,high:price,low:price,close:price,volume:n(x.volume)??0,vwap:price};
-    }).filter(x=>x.close>0).sort((a,b)=>a.date.localeCompare(b.date));
+    }).filter(x=>x.close>0).sort((a,b)=>a.date.localeCompare(b.date)).slice(-Math.max(260,days));
   }
 }
 
