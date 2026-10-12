@@ -1,0 +1,23 @@
+name: Verify production app
+on:
+  push:
+    paths:
+      - "prodapp/**"
+      - ".github/workflows/verify-production.yml"
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: "prodapp/package-lock.json"
+      - name: Install dependencies
+        working-directory: prodapp
+        run: npm install --no-audit --no-fund
+      - name: Typecheck and production build
+        working-directory: prodapp
+        run: npm run build
