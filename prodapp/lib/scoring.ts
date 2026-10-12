@@ -111,8 +111,10 @@ export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:
     comp('Catalyst quality',cat,.10,'Events that could reprice the company.'),comp('Shareholder alignment',share,.05,'Dilution and owner alignment.'),
     comp('Psychology/crowding',psy,.03,'Chasing and crowding risk.'),comp('Risk control',rsk,.05,'Permanent-loss risk controls.')
   ],investmentVetoes);
-  const trade=buildTradePlan(q,t,c);
-  const swingVetoes=trade.status==='Pass'?trade.reasoning.filter(x=>/PASS|No clear|below 2/i.test(x)):[];
+  const trade=buildTradePlan(q,t,c,dataCompleteness);
+  const swingVetoes:string[]=[];
+  if(dataCompleteness<45)swingVetoes.push('Insufficient reliable data for a fully qualified trade.');
+  swingVetoes.push(...trade.reasoning.filter(x=>/PASS|No clear|insufficient|illiquid|sub-\$2|downtrend/i.test(x)));
   const swing=finalize([
     comp('Entry/invalidation structure',trade.status==='Qualified Trade'?92:trade.status==='Watch'?72:35,.25,'Whether risk can be defined before entry.'),
     comp('Technical quality',tech,.20,'Trend, momentum and extension.'),
@@ -124,23 +126,65 @@ export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:
   return {core,growth:growthScore,asymmetric,swing,tradePlan:trade};
 }
 
-export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[]):TradePlan{
+export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],dataCompleteness=100):TradePlan{
   const p=q.price, atrv=t.atr14;
-  if(!p||!atrv||!t.support||!t.resistance)return {status:'Pass',reasoning:['PASS: No clear support/resistance and volatility structure could be calculated.']};
-  const entryLow=Math.max(t.support,p-1.1*atrv);
-  const entryHigh=Math.min(p,p-.25*atrv);
-  const invalidation=t.support-.55*atrv;
-  const risk=Math.max(.01,entryHigh-invalidation);
-  const target1=Math.max(t.resistance,entryHigh+2*risk);
-  const target2=entryHigh+3*risk;
-  const stretch=entryHigh+4*risk;
-  const rr=(target1-entryHigh)/risk;
+  if(!p||!atrv||!t.support||!t.resistance){
+    return {status:'Pass',reasoning:['PASS: No clear support/resistance and volatility structure could be calculated.']};
+  }
+
+  const rawA=Math.max(t.support,p-1.1*atrv);
+  const rawB=p-.25*atrv;
+  const entryLow=Math.min(rawA,rawB);
+  const entryHigh=Math.max(rawA,rawB);
+  const plannedEntry=(entryLow+entryHigh)/2;
+
+  const invalidation=Math.min(t.support-.55*atrv,entryLow-.50*atrv);
+  const risk=Math.max(atrv*.25,plannedEntry-invalidation);
+
+  const confirmation=t.resistance+.15*atrv;
+  const target1=Math.max(t.resistance,plannedEntry+2*risk,confirmation+.10*atrv);
+  const target2=Math.max(target1+.75*atrv,plannedEntry+3*risk);
+  const stretch=Math.max(target2+.75*atrv,plannedEntry+4*risk);
+  const rr=(target1-plannedEntry)/risk;
+
+  const volume=q.avgVolume??q.volume??0;
   const binarySoon=c.some(x=>x.binary&&x.date&&Math.abs(new Date(x.date).getTime()-Date.now())<14*86400000);
+  const downtrend=t.trend==='down'||t.trend==='strong-down';
+  const oversoldDowntrend=(t.rsi14??50)<35 && ((t.sma50!=null&&p<t.sma50)||(t.sma200!=null&&p<t.sma200));
+  const extended=(t.distanceSma20Atr??0)>3;
+  const subTwo=p<2;
+  const illiquid=volume>0&&volume<200000;
+
   const reasons:string[]=[];
   if(rr<2)reasons.push('PASS: Reward/risk is below 2:1.');
+  if(illiquid)reasons.push('PASS: Trading volume is too low for the standard swing-trade model; execution and spreads may be unreliable.');
+  if(dataCompleteness<45)reasons.push('Insufficient fundamental data for a fully qualified trade; treat the setup as lower confidence.');
+  if(subTwo)reasons.push('Sub-$2 stock: price gaps, spreads and volatility can make apparent reward/risk less reliable.');
+  if(downtrend)reasons.push('The stock is in a downtrend, so the model requires evidence of reversal rather than treating a low price as an entry signal.');
+  if(oversoldDowntrend)reasons.push('RSI is low while price remains below important moving averages; this can be a falling trend rather than a bargain.');
   if(binarySoon)reasons.push('A binary catalyst is close enough to create overnight gap risk.');
-  if((t.distanceSma20Atr??0)>3)reasons.push('Price is extended well above its short-term average; chasing risk is elevated.');
-  const status=rr<2?'Pass':binarySoon||((t.distanceSma20Atr??0)>3)?'Watch':'Qualified Trade';
-  if(status==='Qualified Trade')reasons.push('Entry, invalidation and first target can be defined with at least 2:1 reward/risk.');
-  return {status,preferredEntryLow:+entryLow.toFixed(2),preferredEntryHigh:+entryHigh.toFixed(2),confirmationAbove:+(t.resistance+.15*atrv).toFixed(2),invalidationBelow:+invalidation.toFixed(2),target1:+target1.toFixed(2),target2:+target2.toFixed(2),stretchTarget:+stretch.toFixed(2),rewardRisk:+rr.toFixed(2),reasoning:reasons};
+  if(extended)reasons.push('Price is extended well above its short-term average; chasing risk is elevated.');
+
+  let status:TradePlan['status']='Qualified Trade';
+  if(rr<2||illiquid)status='Pass';
+  else if(dataCompleteness<45||subTwo||downtrend||oversoldDowntrend||binarySoon||extended)status='Watch';
+
+  if(status==='Qualified Trade'){
+    reasons.push('Entry, invalidation and first target are ordered correctly and provide at least 2:1 modeled reward/risk.');
+  }else if(status==='Watch'){
+    reasons.push('The price structure can be measured, but one or more risk conditions prevent this from being a fully qualified trade right now.');
+  }
+
+  return {
+    status,
+    preferredEntryLow:+entryLow.toFixed(2),
+    preferredEntryHigh:+entryHigh.toFixed(2),
+    confirmationAbove:+confirmation.toFixed(2),
+    invalidationBelow:+invalidation.toFixed(2),
+    target1:+target1.toFixed(2),
+    target2:+target2.toFixed(2),
+    stretchTarget:+stretch.toFixed(2),
+    rewardRisk:+rr.toFixed(2),
+    reasoning:reasons
+  };
 }
