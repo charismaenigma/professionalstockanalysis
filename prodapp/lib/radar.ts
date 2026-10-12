@@ -33,8 +33,8 @@ export interface RadarReport {
   scanned:number;
   eligible:number;
   rejected:number;
-  verifiedElite:number;
-  verifiedStrong:number;
+  verifiedElite:null;
+  verifiedStrong:null;
   categories:Record<RadarCategory,RadarLead[]>;
   limits:string[];
 }
@@ -128,7 +128,7 @@ export function screenDailyRadar(current:DailyBar[],previous:DailyBar[],reportDa
     status:'ok',reportDate,comparisonDate,generatedAt:new Date().toISOString(),
     source:'Massive Stocks Basic: end-of-day grouped aggregates',
     scanned:current.length,eligible,rejected:current.length-eligible,
-    verifiedElite:0,verifiedStrong:0,
+    verifiedElite:null,verifiedStrong:null,
     categories,
     limits:[
       'Priority /100 ranks leads from two daily summaries. It is NOT the 95+ investment or Swing Trade score.',
