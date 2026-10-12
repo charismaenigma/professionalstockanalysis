@@ -68,6 +68,12 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
   const currentLiab=concept(facts,['LiabilitiesCurrent'],['USD']);
   const equity=concept(facts,['StockholdersEquity','StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'],['USD']);
   const cash=concept(facts,['CashAndCashEquivalentsAtCarryingValue','CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents'],['USD']);
+  // These are independent current/noncurrent securities balances. Never add a
+  // second aggregate 'Investments' fact on top, which would double count.
+  const shortInvestments=concept(facts,['ShortTermInvestments','MarketableSecuritiesCurrent','AvailableForSaleSecuritiesCurrent'],['USD']);
+  const longInvestments=concept(facts,['LongTermInvestments','MarketableSecuritiesNoncurrent','AvailableForSaleSecuritiesNoncurrent'],['USD']);
+  const incomeTax=concept(facts,['IncomeTaxExpenseBenefit'],['USD']);
+  const pretax=concept(facts,['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest','IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],['USD']);
   const debt=concept(facts,['LongTermDebtAndFinanceLeaseObligations','LongTermDebt','LongTermDebtNoncurrent'],['USD']);
   const ocf=concept(facts,['NetCashProvidedByUsedInOperatingActivities'],['USD']);
   const capex=concept(facts,['PaymentsToAcquirePropertyPlantAndEquipment'],['USD']);
@@ -89,7 +95,7 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     const endDate=annual(revenue,i)?.end;
     const rev=ay(revenue,i), oc=ay(ocf,i), cx=ay(capex,i);
     return {
-      date:endDate,period:'FY',revenue:rev,grossProfit:ay(gross,i),operatingIncome:ay(opIncome,i),netIncome:ay(net,i),eps:ay(eps,i),
+      date:endDate,period:'FY',revenue:rev,marketableSecurities:(()=>{const a=iAt(shortInvestments,endDate),b=iAt(longInvestments,endDate);return a!=null||b!=null?(a??0)+(b??0):undefined})(),incomeTaxExpense:ay(incomeTax,i),pretaxIncome:ay(pretax,i),grossProfit:ay(gross,i),operatingIncome:ay(opIncome,i),netIncome:ay(net,i),eps:ay(eps,i),
       totalAssets:iAt(assets,endDate),totalCurrentAssets:iAt(currentAssets,endDate),cashAndCashEquivalents:iAt(cash,endDate),
       totalDebt:iAt(debt,endDate),totalCurrentLiabilities:iAt(currentLiab,endDate),
       totalStockholdersEquity:iAt(equity,endDate),operatingCashFlow:oc,capitalExpenditure:cx,
@@ -98,7 +104,7 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     };
   };
   const makeQuarter=(endDate?:string):FinancialStatement=>({
-    date:endDate,period:'Q',revenue:qAt(revenue,endDate),grossProfit:qAt(gross,endDate),
+    date:endDate,period:'Q',revenue:qAt(revenue,endDate),marketableSecurities:(()=>{const a=iAt(shortInvestments,endDate),b=iAt(longInvestments,endDate);return a!=null||b!=null?(a??0)+(b??0):undefined})(),grossProfit:qAt(gross,endDate),
     operatingIncome:qAt(opIncome,endDate),netIncome:qAt(net,endDate),eps:qAt(eps,endDate),
     totalAssets:iAt(assets,endDate),totalCurrentAssets:iAt(currentAssets,endDate),
     cashAndCashEquivalents:iAt(cash,endDate),totalDebt:iAt(debt,endDate),
@@ -118,6 +124,17 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
   const fcf=latestAnnual.freeCashFlow;
   const debtVal=mostRecentBalance.totalDebt??0, cashVal=mostRecentBalance.cashAndCashEquivalents??0;
   const ev=marketCap!=null?marketCap+debtVal-cashVal:undefined;
+  const taxRate=latestAnnual.incomeTaxExpense!=null && latestAnnual.pretaxIncome!=null && latestAnnual.pretaxIncome>0
+    ?Math.max(0,Math.min(.40,latestAnnual.incomeTaxExpense/latestAnnual.pretaxIncome)):.25;
+  const annualDebt=latestAnnual.totalDebt,annualEquity=latestAnnual.totalStockholdersEquity;
+  const annualOperatingCash=latestAnnual.cashAndCashEquivalents??0;
+  // Treat excess cash as potentially non-operating; exclude only when invested
+  // capital remains positive. ROIC is an estimate, not audited management ROIC.
+  const grossInvested=annualDebt!=null&&annualEquity!=null?annualDebt+annualEquity:undefined;
+  const investedCapital=grossInvested!=null&&grossInvested>0
+    ?grossInvested-Math.min(annualOperatingCash,Math.max(0,grossInvested*.25)):undefined;
+  const estimatedROIC=investedCapital!=null&&investedCapital>0&&latestAnnual.operatingIncome!=null
+    ?latestAnnual.operatingIncome*(1-taxRate)/investedCapital*100:undefined;
   const ttmEps=trailingTwelveMonths(eps);
   const ttmRevenue=trailingFromFiscalYtd(revenue,latestQuarter.date,priorQuarter.date);
   const ttmOcf=trailingFromFiscalYtd(ocf,latestQuarter.date,priorQuarter.date);
@@ -143,13 +160,14 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     currentRatio:mostRecentBalance.totalCurrentAssets!=null&&mostRecentBalance.totalCurrentLiabilities?mostRecentBalance.totalCurrentAssets/mostRecentBalance.totalCurrentLiabilities:undefined,
     debtToEquity:mostRecentBalance.totalDebt!=null&&mostRecentBalance.totalStockholdersEquity?mostRecentBalance.totalDebt/mostRecentBalance.totalStockholdersEquity:undefined,
     returnOnEquity:ni!=null&&eq?ni/eq*100:undefined,
+    returnOnInvestedCapital:estimatedROIC,
     grossMargin:latestAnnual.grossProfit!=null&&rev?latestAnnual.grossProfit/rev*100:undefined,
     operatingMargin:latestAnnual.operatingIncome!=null&&rev?latestAnnual.operatingIncome/rev*100:undefined,
     netMargin:ni!=null&&rev?ni/rev*100:undefined,
     freeCashFlowMargin:fcf!=null&&rev?fcf/rev*100:undefined,
     revenueGrowth:growth(latestQuarter.revenue,priorQuarter.revenue)??growth(latestAnnual.revenue,priorAnnual.revenue),
     epsGrowth:growth(latestQuarter.eps,priorQuarter.eps)??growth(latestAnnual.eps,priorAnnual.eps),
-    sharesGrowth,cash:mostRecentBalance.cashAndCashEquivalents,debt:mostRecentBalance.totalDebt,
+    sharesGrowth,cash:mostRecentBalance.cashAndCashEquivalents,marketableSecurities:mostRecentBalance.marketableSecurities,debt:mostRecentBalance.totalDebt,
     latestAnnual,priorAnnual,latestQuarter,priorQuarter,warnings
   };
   return {snapshot,companyName:info.name,cik:info.cik};
