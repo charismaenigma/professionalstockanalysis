@@ -170,6 +170,15 @@ export interface BenchmarkResult {
 }
 
 export interface AnalysisResult {
+  leveragedFund?: {
+    symbol:string; name:string; index:string; direction:'Bull'|'Bear';
+    dailyMultiple:number; sourceUrl:string;
+  };
+  leveragedContext?:{headline:string;summary:string;status:string};
+  leveragedAlternatives?:{
+    symbol:string;name:string;exposure:string;reason:string;
+    isVerifiedNow:false;sourceUrl:string;
+  }[];
   instrumentType?: 'Stock' | 'ETF';
   fundProfile?: {
     tracks:string;
