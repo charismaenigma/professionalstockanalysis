@@ -33,7 +33,8 @@ describe('OTC and data-quality safeguards',()=>{
       warnings:[],currentRatio:2,debtToEquity:.2,returnOnEquity:23,
       returnOnInvestedCapital:20,operatingMargin:25,netMargin:18,
       grossMargin:46,revenueGrowth:17,epsGrowth:20,
-      priceToEarnings:22,priceToSales:4,freeCashFlowMargin:20,cash:2e9,debt:1e9
+      priceToEarnings:22,priceToSales:4,freeCashFlowMargin:20,cash:2e9,debt:1e9,
+      latestAnnual:{date:'2026-07-01',revenue:15e9,stockBasedCompensation:0}
     };
     const t:TechnicalSnapshot={
       trend:'strong-up',rsi14:54,atr14:3,sma20:100,sma50:96,sma200:88,
@@ -78,4 +79,59 @@ describe('honest conditional trading plans',()=>{
     }],95);
     expect(plan.status).toBe('Watch');
   });
+});
+
+describe('Scoring v2 structural protections and score ceilings',()=>{
+ const t:TechnicalSnapshot={
+   trend:'strong-up',rsi14:55,atr14:2,sma20:99,sma50:98,sma200:89,
+   relativeVolume:1.9,distanceSma20Atr:.5,distanceSma50Atr:.5,
+   support:96,resistance:140
+ };
+ const q:Quote={symbol:'BEST',price:100,avgVolume:3_000_000,volume:3_000_000,marketCap:1e9,timestamp:'2026-10-09'};
+ const annual={date:'2026-07-01',revenue:300e6,stockBasedCompensation:0};
+ const ideal:FundamentalSnapshot={
+   warnings:[],currentRatio:3,debtToEquity:.1,returnOnEquity:35,
+   returnOnInvestedCapital:30,operatingMargin:35,grossMargin:70,
+   revenueGrowth:42,epsGrowth:50,freeCashFlowMargin:30,
+   priceToEarnings:10,priceToSales:1,priceToFreeCashFlow:10,evToSales:1,
+   sharesGrowth:-6,cash:150e6,marketableSecurities:50e6,debt:50e6,
+   latestAnnual:annual
+ };
+ it('allows truly exceptional, sufficiently documented companies to exceed 95 without score inflation',()=>{
+   const x=buildScores(ideal,t,q,[],100);
+   expect(x.business.score).toBeGreaterThanOrEqual(95);
+   expect(x.core.score).toBeGreaterThanOrEqual(95);
+   expect(x.growth.score).toBeGreaterThanOrEqual(95);
+   expect(x.asymmetric.score).toBeGreaterThanOrEqual(95);
+   expect(x.swing.score).toBeGreaterThanOrEqual(95);
+   expect(x.tradePlan.status).toBe('Qualified Trade');
+   expect(x.core.modelVersion).toBe('2.0.0-research');
+ });
+ it('distinguishes excellent business fundamentals from an expensive current purchase price',()=>{
+   const appleLike:FundamentalSnapshot={
+     ...ideal,currentRatio:.9,debtToEquity:.77,returnOnEquity:125,
+     returnOnInvestedCapital:39,operatingMargin:30,grossMargin:46,
+     revenueGrowth:16.4,epsGrowth:29,freeCashFlowMargin:23.7,
+     priceToEarnings:38.6,priceToSales:10,priceToFreeCashFlow:42,evToSales:10,
+     sharesGrowth:-3,cash:40e9,marketableSecurities:107e9,debt:85e9,
+     latestAnnual:{...annual,revenue:420e9,stockBasedCompensation:8e9}
+   };
+   const result=buildScores(appleLike,t,{...q,symbol:'AAPL',marketCap:5e12},[],93);
+   expect(result.business.score).toBeGreaterThan(result.core.score!+15);
+   expect(result.business.score).toBeGreaterThanOrEqual(80);
+   expect(result.core.components.find(x=>x.name==='Valuation')?.raw).toBeLessThan(40);
+   expect(result.business.components.some(x=>x.name==='Valuation')).toBe(false);
+ });
+ it('keeps incomplete evidence below elite rather than giving missing inputs a 50',()=>{
+   const f={...ideal,returnOnInvestedCapital:undefined,priceToSales:undefined};
+   const r=buildScores(f,t,q,[],75);
+   expect(r.core.score).toBeLessThan(90);
+   expect(r.core.confidence).not.toBe('High');
+   expect(r.core.score).not.toBeNull();
+ });
+ it('cannot turn a rejected mathematical trade into an approved 95+ signal',()=>{
+   const r=buildScores(ideal,{...t,resistance:101},q,[],100);
+   expect(r.tradePlan.status).toBe('Pass');
+   expect(r.swing.score).toBeLessThanOrEqual(69.9);
+ });
 });
