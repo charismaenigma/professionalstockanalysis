@@ -16,8 +16,17 @@ export async function fmpQuote(symbol:string):Promise<Quote>{
 }
 export async function fmpBars(symbol:string,days=420):Promise<Bar[]>{
   const from=new Date(Date.now()-days*86400000).toISOString().slice(0,10); const to=new Date().toISOString().slice(0,10);
-  const a:any[]=await get('/historical-price-eod/full',{symbol,from,to});
-  return (a??[]).map(x=>({date:String(x.date),open:n(x.open)??0,high:n(x.high)??0,low:n(x.low)??0,close:n(x.close)??0,volume:n(x.volume)??0,vwap:n(x.vwap)})).filter(x=>x.close>0).sort((a,b)=>a.date.localeCompare(b.date));
+  try{
+    const a:any[]=await get('/historical-price-eod/full',{symbol,from,to});
+    return (a??[]).map(x=>({date:String(x.date),open:n(x.open)??0,high:n(x.high)??0,low:n(x.low)??0,close:n(x.close)??0,volume:n(x.volume)??0,vwap:n(x.vwap)})).filter(x=>x.close>0).sort((a,b)=>a.date.localeCompare(b.date));
+  }catch(err:any){
+    if(!String(err?.message||'').includes('(402)')) throw err;
+    const a:any[]=await get('/historical-price-eod/light',{symbol,from,to});
+    return (a??[]).map(x=>{
+      const price=n(x.price)??0;
+      return {date:String(x.date),open:price,high:price,low:price,close:price,volume:n(x.volume)??0,vwap:price};
+    }).filter(x=>x.close>0).sort((a,b)=>a.date.localeCompare(b.date));
+  }
 }
 
 export async function fmpFundamentals(symbol:string):Promise<{snapshot:FundamentalSnapshot;companyName?:string;cik?:string}>{
