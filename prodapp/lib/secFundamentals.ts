@@ -120,7 +120,7 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     date:endDate,period:'Q',revenue:qAt(revenue,endDate),marketableSecurities:(()=>{const a=iAt(shortInvestments,endDate),b=iAt(longInvestments,endDate);return a!=null||b!=null?(a??0)+(b??0):undefined})(),grossProfit:qAt(gross,endDate),
     operatingIncome:qAt(opIncome,endDate),netIncome:qAt(net,endDate),eps:qAt(eps,endDate),
     totalAssets:iAt(assets,endDate),totalCurrentAssets:iAt(currentAssets,endDate),
-    cashAndCashEquivalents:iAt(cash,endDate),totalDebt:iAt(debt,endDate),
+    cashAndCashEquivalents:iAt(cash,endDate),totalDebt:debtAt(endDate),
     totalCurrentLiabilities:iAt(currentLiab,endDate),totalStockholdersEquity:iAt(equity,endDate),
     freeCashFlow:undefined,weightedAverageShsOutDil:qAt(shares,endDate)
   });
