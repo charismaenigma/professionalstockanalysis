@@ -218,3 +218,8 @@ h3{font-size:22px;margin:5px 0 12px}
 .businessCopy p{margin:8px 0;font-size:14px;color:#bed3e8;line-height:1.65}
 .businessCopy strong{color:#f1f7ff}
 @media(max-width:720px){.businessSummaryGrid{grid-template-columns:1fr}}
+
+/* Radar distinguishes business quality from investment entry and trade readiness. */
+.radarBusinessLabel{display:flex;gap:12px;align-items:baseline;justify-content:space-between;border:1px solid #375b74;background:#0e2940;border-radius:8px;margin-top:13px;padding:9px 11px}
+.radarBusinessLabel span{font-size:12px;color:#c2d8ed}
+.radarBusinessLabel strong{font-size:19px}
