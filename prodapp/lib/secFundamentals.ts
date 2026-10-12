@@ -1,5 +1,5 @@
 import type { FinancialStatement, FundamentalSnapshot } from './types';
-import { matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths } from './secPeriods';
+import { matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, trailingFromFiscalYtd } from './secPeriods';
 
 const ua=()=>process.env.SEC_USER_AGENT||'MarketClarity research app contact@example.com';
 const headers={'User-Agent':ua(),'Accept-Encoding':'gzip, deflate'};
@@ -119,19 +119,27 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
   const debtVal=mostRecentBalance.totalDebt??0, cashVal=mostRecentBalance.cashAndCashEquivalents??0;
   const ev=marketCap!=null?marketCap+debtVal-cashVal:undefined;
   const ttmEps=trailingTwelveMonths(eps);
+  const ttmRevenue=trailingFromFiscalYtd(revenue,latestQuarter.date,priorQuarter.date);
+  const ttmOcf=trailingFromFiscalYtd(ocf,latestQuarter.date,priorQuarter.date);
+  const ttmCapex=trailingFromFiscalYtd(capex,latestQuarter.date,priorQuarter.date);
+  const ttmFcf=ttmOcf!=null&&ttmCapex!=null?ttmOcf-ttmCapex:undefined;
+  const trailingSales=ttmRevenue??(latestQuarter.date&&latestAnnual.date&&latestQuarter.date>latestAnnual.date?undefined:rev);
+  const trailingCashFlow=ttmFcf??(latestQuarter.date&&latestAnnual.date&&latestQuarter.date>latestAnnual.date?undefined:fcf);
   const warnings:string[]=[];
   const sharesGrowth=growth(latestAnnual.weightedAverageShsOutDil,priorAnnual.weightedAverageShsOutDil);
   if(sharesGrowth!=null&&sharesGrowth>10)warnings.push(`Diluted share count increased about ${sharesGrowth.toFixed(1)}% year over year.`);
   if(fcf!=null&&fcf<0)warnings.push('Free cash flow is negative in the latest annual filing.');
   if(price!=null&&ttmEps==null)warnings.push('Trailing-twelve-month earnings per share could not be reliably reconstructed from SEC filings; P/E is not available.');
+  if(price!=null&&trailingSales==null)warnings.push('Trailing-twelve-month revenue could not be aligned across filings; sales-based valuation ratios are withheld.');
+  if(price!=null&&trailingCashFlow==null)warnings.push('Trailing-twelve-month free cash flow could not be aligned across filings; cash-flow valuation is withheld.');
 
   const snapshot:FundamentalSnapshot={
     priceToEarnings:price!=null&&ttmEps!=null&&ttmEps>0?price/ttmEps:undefined,
-    priceToSales:marketCap!=null&&rev?marketCap/rev:undefined,
+    priceToSales:marketCap!=null&&trailingSales?marketCap/trailingSales:undefined,
     priceToBook:marketCap!=null&&eq?marketCap/eq:undefined,
     enterpriseValue:ev,
-    evToSales:ev!=null&&rev?ev/rev:undefined,
-    priceToFreeCashFlow:marketCap!=null&&fcf&&fcf>0?marketCap/fcf:undefined,
+    evToSales:ev!=null&&trailingSales?ev/trailingSales:undefined,
+    priceToFreeCashFlow:marketCap!=null&&trailingCashFlow&&trailingCashFlow>0?marketCap/trailingCashFlow:undefined,
     currentRatio:mostRecentBalance.totalCurrentAssets!=null&&mostRecentBalance.totalCurrentLiabilities?mostRecentBalance.totalCurrentAssets/mostRecentBalance.totalCurrentLiabilities:undefined,
     debtToEquity:mostRecentBalance.totalDebt!=null&&mostRecentBalance.totalStockholdersEquity?mostRecentBalance.totalDebt/mostRecentBalance.totalStockholdersEquity:undefined,
     returnOnEquity:ni!=null&&eq?ni/eq*100:undefined,
