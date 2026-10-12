@@ -53,11 +53,17 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
   const concerns:string[]=[];
   const improve:string[]=[];
   const psychology:string[]=[];
-  if((f.revenueGrowth??0)>15)likes.push('Revenue growth is currently strong.');
+  if((f.revenueGrowth??0)>10)likes.push(`Revenue grew about ${f.revenueGrowth!.toFixed(1)}% against the comparable quarter one year earlier.`);
   if((f.currentRatio??0)>1.5)likes.push('Short-term liquidity appears healthy.');
   if((f.debtToEquity??99)<0.7)likes.push('Leverage is relatively modest.');
-  if((f.freeCashFlowMargin??-99)>5)likes.push('Free cash flow generation is positive relative to sales.');
+  if((f.freeCashFlowMargin??-99)>5)likes.push('Free cash flow generation is positive relative to sales in the latest annual report.');
+  if((f.operatingMargin??0)>20)likes.push('Operating profitability is strong in the latest annual statements.');
+  if((f.epsGrowth??0)>15)likes.push(`Diluted earnings per share increased about ${f.epsGrowth!.toFixed(1)}% versus the comparable quarter last year.`);
   if(t.trend==='up'||t.trend==='strong-up')likes.push('The longer-term price trend is constructive.');
+  if(f.priceToEarnings!=null&&f.priceToEarnings>30)
+    concerns.push(`Valuation is demanding: the share price is about ${f.priceToEarnings.toFixed(1)} times estimated earnings over the past twelve months. This can magnify losses if growth disappoints.`);
+  if(f.priceToSales!=null&&f.priceToSales>8)
+    concerns.push(`Shares cost approximately ${f.priceToSales.toFixed(1)} times trailing company revenue, a substantial sales multiple.`);
   if((f.sharesGrowth??0)>8)concerns.push('Share count has increased, which can reduce each existing share’s ownership percentage.');
   if((f.debtToEquity??0)>1.5)concerns.push('Leverage is elevated.');
   if((t.rsi14??0)>75)concerns.push('Recent upward momentum is unusually strong, so the current price may be extended.');
@@ -66,6 +72,8 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
   if((scores.core.score??0)<95)improve.push('A more attractive valuation could improve the long-term score.');
   if((scores.swing.score??0)<95)improve.push('A clearer technical setup could improve the swing score.');
   if((f.revenueGrowth??0)<15)improve.push('Faster or more consistent growth could improve the growth score.');
+  if(f.priceToEarnings!=null&&f.priceToEarnings>30)
+    improve.unshift('A lower price relative to the company’s earnings, or sustained profit growth, could improve the valuation score.');
   if((t.rsi14??50)>70)psychology.push('FOMO check: avoid making a decision only because the price has risen quickly.');
   if(best>=90)psychology.push('Confirmation-bias check: compare supportive and contradictory evidence before acting.');
   const base=[...benchmarks].sort((a,b)=>(b.longTermQuality*.7+b.timing*.3)-(a.longTermQuality*.7+a.timing*.3))[0];
@@ -77,7 +85,9 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
     ?`${company} reaches the Elite range in at least one model. The score is a research classification, not a probability of profit. ${base.symbol} remains the diversified comparison point.`
     :best>=90
     ?`${company} reaches the Strong Candidate range in at least one model, while at least one important condition still falls short of the strictest standard. ${base.symbol} remains the diversified comparison point.`
-    :`${company} has some positive features, but the current evidence does not reach the app’s highest-confidence score bands.`;
+    :f.priceToEarnings!=null&&f.priceToEarnings>30&&(f.operatingMargin??0)>20
+    ?`${company} reports substantial operating profitability, but its stock carries a demanding valuation. MarketClarity’s current price-sensitive research model does not identify a qualifying new entry. This is not a judgment that the business is poor, and the model has not yet been historically calibrated.`
+    :`${company} has some positive features, but the current evidence does not reach the app’s highest-confidence score bands. The score is an uncalibrated research rubric, not a probability of future returns.`;
   return {simpleSummary,likes,concerns:[...new Set(concerns)],improve:[...new Set(improve)],psychology:[...new Set(psychology)]};
 }
 
