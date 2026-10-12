@@ -96,7 +96,7 @@ async function independentlyReview(lead:RadarLead,session:string){
     mode:'live',instrumentType:'Stock',marketClassification:'Unknown',symbol:lead.symbol,
     quote,priceDataAgeDays:Math.max(0,Math.floor((Date.now()-Date.parse(quote.timestamp!))/86400000)),
     dataCompleteness:completeness,
-    assessmentWarnings:[],scores:{core:scores.core,growth:scores.growth,asymmetric:scores.asymmetric,swing:scores.swing},
+    assessmentWarnings:[],scores:{business:scores.business,core:scores.core,growth:scores.growth,asymmetric:scores.asymmetric,swing:scores.swing},
     tradePlan:scores.tradePlan
   });
 }
