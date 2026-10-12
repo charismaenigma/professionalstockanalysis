@@ -115,14 +115,30 @@ export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:
   const swingVetoes:string[]=[];
   if(dataCompleteness<45)swingVetoes.push('Insufficient reliable data for a fully qualified trade.');
   swingVetoes.push(...trade.reasoning.filter(x=>/PASS|No clear|insufficient|illiquid|sub-\$2|downtrend/i.test(x)));
-  const swing=finalize([
+  let swing=finalize([
     comp('Entry/invalidation structure',trade.status==='Qualified Trade'?92:trade.status==='Watch'?72:35,.25,'Whether risk can be defined before entry.'),
     comp('Technical quality',tech,.20,'Trend, momentum and extension.'),
-    comp('Reward/risk',trade.rewardRisk==null?35:lin(trade.rewardRisk,1,4),.15,'Potential reward compared with defined downside.'),
+    comp('Reward/risk',trade.rewardRisk==null?35:lin(Math.min(trade.rewardRisk,4),1,4),.15,'Potential reward compared with defined downside. Reward/risk is only counted after setup quality and execution risks are considered.'),
     comp('Liquidity/execution',(q.avgVolume??q.volume??0)>1e6?90:(q.avgVolume??q.volume??0)>2e5?70:35,.10,'Ability to enter and exit without excessive friction.'),
     comp('Catalyst',cat,.10,'Upcoming events that may move price.'),comp('Psychology/crowding',psy,.05,'Risk of chasing or crowding.'),
     comp('Risk control',rsk,.05,'Event and balance-sheet risks.'),comp('Financial health',fin,.05,'Company stability.'),comp('Growth',gro,.05,'Fundamental backdrop.')
   ],swingVetoes);
+
+  // A mathematically attractive reward/risk ratio cannot override a rejected setup.
+  // Pass setups are capped below the research-only band; Watch setups cannot become
+  // Strong/Elite until the underlying setup itself qualifies.
+  if(trade.status==='Pass' && swing.score>69.9){
+    swing={...swing,score:69.9,band:band(69.9)};
+  }else if(trade.status==='Watch' && swing.score>89.9){
+    swing={...swing,score:89.9,band:band(89.9)};
+  }
+
+  // Full actionable plans require at least a 90 Swing Trade score.
+  if(trade.status==='Qualified Trade' && swing.score<90){
+    trade.status='Watch';
+    trade.reasoning.push('The setup has measurable levels, but the overall Swing Trade score is below 90, so MarketClarity will not present it as an active trade plan.');
+  }
+
   return {core,growth:growthScore,asymmetric,swing,tradePlan:trade};
 }
 
@@ -166,13 +182,15 @@ export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],data
   if(extended)reasons.push('Price is extended well above its short-term average; chasing risk is elevated.');
 
   let status:TradePlan['status']='Qualified Trade';
-  if(rr<2||illiquid)status='Pass';
-  else if(dataCompleteness<45||subTwo||downtrend||oversoldDowntrend||binarySoon||extended)status='Watch';
+  if(rr<2||illiquid||(subTwo&&downtrend)||oversoldDowntrend)status='Pass';
+  else if(dataCompleteness<45||subTwo||downtrend||binarySoon||extended)status='Watch';
 
   if(status==='Qualified Trade'){
     reasons.push('Entry, invalidation and first target are ordered correctly and provide at least 2:1 modeled reward/risk.');
   }else if(status==='Watch'){
     reasons.push('The price structure can be measured, but one or more risk conditions prevent this from being a fully qualified trade right now.');
+  }else{
+    reasons.push('No active trade plan should be used while these disqualifying conditions remain.');
   }
 
   return {
