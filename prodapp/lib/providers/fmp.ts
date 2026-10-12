@@ -11,8 +11,22 @@ const pct=(x:any)=>{const v=n(x); return v==null?undefined:(Math.abs(v)<=2?v*100
 const growth=(a?:number,b?:number)=>a!=null&&b!=null&&b!==0?((a/b)-1)*100:undefined;
 
 export async function fmpQuote(symbol:string):Promise<Quote>{
-  const a:any[]=await get('/quote',{symbol}); const q=a?.[0]; if(!q)throw new Error('Ticker not found');
-  return {symbol, name:q.name, price:n(q.price)??n(q.previousClose)??0, change:n(q.change), changePercent:n(q.changePercentage)??n(q.changesPercentage), volume:n(q.volume), avgVolume:n(q.avgVolume), marketCap:n(q.marketCap), yearHigh:n(q.yearHigh), yearLow:n(q.yearLow), timestamp:new Date().toISOString()};
+  try{
+    const a:any[]=await get('/quote',{symbol}); const q=a?.[0]; if(!q)throw new Error('Ticker not found');
+    return {symbol, name:q.name, price:n(q.price)??n(q.previousClose)??0, change:n(q.change), changePercent:n(q.changePercentage)??n(q.changesPercentage), volume:n(q.volume), avgVolume:n(q.avgVolume), marketCap:n(q.marketCap), yearHigh:n(q.yearHigh), yearLow:n(q.yearLow), timestamp:new Date().toISOString()};
+  }catch(err:any){
+    if(!String(err?.message||'').includes('(402)')) throw err;
+    const to=new Date().toISOString().slice(0,10);
+    const from=new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+    const a:any[]=await get('/historical-price-eod/light',{symbol,from,to});
+    const rows=(a??[]).sort((x:any,y:any)=>String(x.date).localeCompare(String(y.date)));
+    const last=rows.at(-1), prev=rows.at(-2);
+    if(!last) throw new Error('Ticker not found or unavailable on the current FMP plan.');
+    const price=n(last.price)??0, previous=n(prev?.price);
+    const change=previous==null?undefined:price-previous;
+    const changePercent=previous?((price/previous)-1)*100:undefined;
+    return {symbol,name:symbol,price,change,changePercent,volume:n(last.volume),timestamp:String(last.date)};
+  }
 }
 export async function fmpBars(symbol:string,days=420):Promise<Bar[]>{
   const from=new Date(Date.now()-days*86400000).toISOString().slice(0,10); const to=new Date().toISOString().slice(0,10);
