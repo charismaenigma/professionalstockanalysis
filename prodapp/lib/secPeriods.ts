@@ -48,3 +48,18 @@ export function trailingTwelveMonths<T extends PeriodFact>(rows:T[]):number|unde
   const output=yearly.val+thisYtd.val-priorYtd.val;
   return Number.isFinite(output)&&output>0?output:undefined;
 }
+
+/** Build a trailing 12-month value for cash-flow or income-statement fields
+ * that are reported cumulatively as fiscal year-to-date in Form 10-Q. */
+export function trailingFromFiscalYtd<T extends PeriodFact>(
+ rows:T[],currentQuarterEnd?:string,priorYearQuarterEnd?:string
+):number|undefined{
+ const yearly=latestAnnual(rows);
+ if(!yearly||!Number.isFinite(yearly.val)||!yearly.end)return undefined;
+ if(!currentQuarterEnd||currentQuarterEnd<=yearly.end)return yearly.val;
+ if(!priorYearQuarterEnd||elapsed(currentQuarterEnd,yearly.end)>370)return undefined;
+ const currentYtd=yearToDateAt(rows,currentQuarterEnd);
+ const priorYtd=yearToDateAt(rows,priorYearQuarterEnd);
+ if(!currentYtd||!priorYtd||!Number.isFinite(currentYtd.val)||!Number.isFinite(priorYtd.val))return undefined;
+ return yearly.val+currentYtd.val-priorYtd.val;
+}
