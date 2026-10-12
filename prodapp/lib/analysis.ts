@@ -43,7 +43,7 @@ function optionShortlist(options:OptionContract[],price:number){
     .slice(0,24);
 }
 
-function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof technicalSnapshot>,scores:ReturnType<typeof buildScores>,benchmarks:BenchmarkResult[]){
+function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof technicalSnapshot>,scores:ReturnType<typeof buildScores>,benchmarks:BenchmarkResult[],dataCompleteness:number){
   const vals=[scores.core.score,scores.growth.score,scores.asymmetric.score,scores.swing.score];
   const best=Math.max(...vals);
   const likes:string[]=[];
@@ -58,6 +58,7 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
   if((f.sharesGrowth??0)>8)concerns.push('Share count has increased, which can reduce each existing share’s ownership percentage.');
   if((f.debtToEquity??0)>1.5)concerns.push('Leverage is elevated.');
   if((t.rsi14??0)>75)concerns.push('Recent upward momentum is unusually strong, so the current price may be extended.');
+  if(dataCompleteness<45)concerns.push('Fundamental data is incomplete, so long-term conclusions have low confidence.');
   concerns.push(...f.warnings.slice(0,2));
   if(scores.core.score<95)improve.push('A more attractive valuation could improve the long-term score.');
   if(scores.swing.score<95)improve.push('A clearer technical setup could improve the swing score.');
@@ -65,7 +66,9 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
   if((t.rsi14??50)>70)psychology.push('FOMO check: avoid making a decision only because the price has risen quickly.');
   if(best>=90)psychology.push('Confirmation-bias check: compare supportive and contradictory evidence before acting.');
   const base=[...benchmarks].sort((a,b)=>(b.longTermQuality*.7+b.timing*.3)-(a.longTermQuality*.7+a.timing*.3))[0];
-  const simpleSummary=best>=95
+  const simpleSummary=dataCompleteness<45
+    ?`${company} does not have enough complete fundamental data for a high-confidence investment conclusion. Technical information can still be useful, but the app will not treat missing data as neutral evidence.`
+    :best>=95
     ?`${company} reaches the Elite range in at least one model. The score is a research classification, not a probability of profit. ${base.symbol} remains the diversified comparison point.`
     :best>=90
     ?`${company} reaches the Strong Candidate range in at least one model, while at least one important condition still falls short of the strictest standard. ${base.symbol} remains the diversified comparison point.`
@@ -118,7 +121,7 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   let options:OptionContract[]=[];
   if(hasMassive)options=optionShortlist(await massiveOptions(symbol).catch(()=>[]),quote.price);
 
-  const copy=language(companyName,fundamentals,technicals,built,benchmarks);
+  const copy=language(companyName,fundamentals,technicals,built,benchmarks,dataCompleteness);
   const warnings:string[]=[];
   if(!hasMassive)warnings.push('Demo mode is active. Add MASSIVE_API_KEY to enable end-of-day market data and SEC-based fundamentals.');
   if(hasMassive)warnings.push('Market prices are end-of-day on the free Massive Stocks plan, not real-time quotes.');
