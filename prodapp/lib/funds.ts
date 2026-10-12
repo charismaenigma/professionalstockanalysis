@@ -51,7 +51,7 @@ export function scoreFundCore(symbol:string):ModelScore {
     component('Market liquidity',symbol==='VTI'?94:96,.20,'Large established U.S. index ETF, but trade execution still depends on current bid/ask spreads. This factor is qualitative, not a real-time spread measurement.'),
     component('Clear index approach',symbol==='VTI'?92:91,.15,'Transparent, rules-based broad-market fund exposure; U.S. equities still carry market and concentration risk.')
   ];
-  const score=Math.round(comps.reduce((a,c)=>a+c.contribution,0)*10)/10;
+  const score=Math.round((comps.reduce((a,c)=>a+c.contribution,0)+1e-9)*10)/10;
   return {score,band:band(score),components:comps,vetoes:[
     'This is a transparent structural fund-quality baseline, not a promise of returns or a recommendation to buy immediately.',
     'Components such as liquidity and diversification are qualitative assumptions, not a freshly verified holdings/spread audit.'
