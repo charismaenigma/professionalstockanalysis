@@ -96,7 +96,7 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   if(hasMassive){
     bars=await massiveStockBars(symbol);
     quote=quoteFromBars(symbol,bars,symbol);
-    const reference=await massiveMarketClassification(symbol).catch(()=>({market:'Unknown' as const}));
+    const reference=await massiveMarketClassification(symbol).catch(()=>({market:'Unknown' as const,name:undefined as string|undefined}));
     marketClassification=reference.market;
     quote.name=reference.name||symbol;
 
