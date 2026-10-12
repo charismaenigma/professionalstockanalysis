@@ -116,3 +116,67 @@ h3{font-size:22px;margin:5px 0 12px}
   .price{font-size:30px}
   .panel{padding:16px}
 }
+
+/* Daily Opportunity Radar */
+.mainTopActions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.radarHome,.radarBrand{color:#e7f6ff;text-decoration:none}
+.radarBrand{font-size:24px;font-weight:900;letter-spacing:-.03em}
+.radarHome{padding:9px 13px;border:1px solid var(--line);border-radius:999px;font-weight:750;white-space:nowrap}
+.radarHome:hover,.radarActions a:hover{border-color:var(--blue);background:#132d45}
+.radarHero h1{font-size:clamp(38px,5vw,60px)}
+.radarStatus{display:grid;gap:3px;border-left:3px solid var(--cyan);padding:5px 13px;margin-top:18px}
+.radarStatus span{font-size:13px;color:#bdd2e9}
+.radarOverviewHeading{display:flex;align-items:start;justify-content:space-between;gap:15px}
+.radarOverviewHeading h3{font-size:28px;margin:3px 0}
+.radarLastUpdated{color:var(--muted);font-size:12px;text-align:right}
+.radarStats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:13px 0}
+.radarStats>div{background:#081624;border:1px solid var(--line);border-radius:11px;padding:14px;display:grid;gap:4px}
+.radarStats span{color:var(--muted);font-size:12px}
+.radarStats b{font-size:22px}
+.radarTabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.radarTabs button{background:#091725;color:#cce0f3;padding:9px 12px;border:1px solid var(--line);border-radius:999px;font-weight:750;cursor:pointer}
+.radarTabs button.selected{background:#163959;border-color:#5caeff;color:#f0faff}
+.radarTabs span{margin-left:6px;color:#93b5d4}
+.radarListHeading{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:8px 0 12px;border-top:1px solid var(--line)}
+.radarListHeading h3{margin-bottom:2px}
+.radarListHeading p,.radarListHeading>span{color:var(--muted);margin:0;font-size:13px}
+.radarGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.radarLead{background:#081725;border:1px solid var(--line);border-radius:13px;padding:17px;min-width:0}
+.radarLeadTop{display:flex;justify-content:space-between;align-items:start;gap:10px}
+.radarTicker{font-size:25px;font-weight:900;margin-right:9px}
+.radarTag{font-size:10px;text-transform:uppercase;color:var(--cyan);letter-spacing:.05em}
+.radarPriority{font-size:24px;font-weight:900;white-space:nowrap}
+.radarPriority small{font-size:10px;color:var(--muted);display:block;text-align:right;font-weight:500}
+.radarNumbers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:13px 0}
+.radarNumbers>div{background:#0c2033;border:1px solid #23405e;border-radius:9px;padding:8px}
+.radarNumbers span{display:block;color:#9eb0c6;font-size:11px}
+.radarNumbers strong{display:block;font-size:17px}
+.radarUp{color:var(--green)}
+.radarDown{color:var(--amber)}
+.radarLeadNotes{display:grid;grid-template-columns:1fr 1fr;gap:13px;border-top:1px solid var(--line);padding-top:10px}
+.radarLeadNotes b{font-size:12px}
+.radarLeadNotes p{font-size:12px;color:#bdcfe0;line-height:1.4}
+.radarLeveraged{border-left:3px solid var(--amber);padding:7px 10px;background:#231f16;font-size:12px}
+.radarActions{border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding-top:13px}
+.radarActions span{color:var(--muted);font-size:11px}
+.radarActions a{white-space:nowrap;color:#eaf6ff;text-decoration:none;padding:9px 12px;border:1px solid #448bc8;border-radius:9px;font-size:12px;font-weight:800}
+.radarSteps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.radarSteps>div{border:1px solid var(--line);border-radius:11px;padding:13px}
+.radarSteps p{color:var(--muted);font-size:12px}
+.radarNone,.radarError,.radarLoading{padding-top:30px;padding-bottom:30px}
+.radarNone{border:1px dashed var(--line);padding:26px;border-radius:12px;color:var(--muted)}
+.radarNone h3{color:var(--text)}
+@media(max-width:800px){
+ .radarGrid,.radarLeadNotes{grid-template-columns:1fr}
+ .radarStats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .radarSteps{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+ .radarOverviewHeading,.radarListHeading{flex-direction:column;align-items:start}
+ .radarLastUpdated{text-align:left}
+ .radarStats{grid-template-columns:1fr 1fr}
+ .radarLeadTop{flex-wrap:wrap}
+ .radarPriority small{text-align:left}
+ .radarActions{flex-direction:column;align-items:stretch}
+ .radarActions a{text-align:center}
+}
