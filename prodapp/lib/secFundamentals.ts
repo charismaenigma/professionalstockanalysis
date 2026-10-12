@@ -1,5 +1,5 @@
 import type { FinancialStatement, FundamentalSnapshot } from './types';
-import { matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, trailingFromFiscalYtd } from './secPeriods';
+import { matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, trailingFromFiscalYtd, combineDebtBalances } from './secPeriods';
 
 const ua=()=>process.env.SEC_USER_AGENT||'MarketClarity research app contact@example.com';
 const headers={'User-Agent':ua(),'Accept-Encoding':'gzip, deflate'};
@@ -98,11 +98,7 @@ export async function secFundamentals(symbol:string,price?:number):Promise<{snap
     const current=iAt(debtCurrent,endDate),noncurrent=iAt(debtNoncurrent,endDate);
     // When both components are reported, they give the clearest debt
     // breakdown; never add an already aggregated LongTermDebt on top.
-    const termDebt=current!=null&&noncurrent!=null
-      ?current+noncurrent
-      :iAt(debtTotal,endDate)??noncurrent??current;
-    const paper=iAt(shortBorrowings,endDate);
-    return termDebt!=null||paper!=null?(termDebt??0)+(paper??0):undefined;
+    return combineDebtBalances(current,noncurrent,iAt(debtTotal,endDate),iAt(shortBorrowings,endDate));
   };
   const makeAnnual=(i:number):FinancialStatement=>{
     const endDate=annual(revenue,i)?.end;
