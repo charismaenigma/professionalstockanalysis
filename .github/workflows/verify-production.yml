@@ -16,6 +16,9 @@ jobs:
       - name: Install dependencies
         working-directory: prodapp
         run: npm install --no-audit --no-fund
+      - name: Unit and regression tests
+        working-directory: prodapp
+        run: npm run test
       - name: Typecheck and production build
         working-directory: prodapp
         run: npm run build
