@@ -209,3 +209,12 @@ h3{font-size:22px;margin:5px 0 12px}
 .radarReviewStatus h3{margin:0 0 5px;font-size:17px}
 .radarReviewStatus p{margin:6px 0 0;font-size:13px}
 @media(max-width:760px){.radarPulse{grid-template-columns:1fr}.radarModelScores{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Separate fundamentals from purchase-price decisions. */
+.businessSummaryGrid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,2.4fr);gap:15px;margin-top:15px;align-items:stretch}
+.businessSummaryGrid .scoreCard{min-height:0}
+.businessCopy{border:1px solid var(--line);border-radius:13px;background:#091a2a;padding:17px}
+.businessCopy h4{margin:0 0 9px;font-size:17px}
+.businessCopy p{margin:8px 0;font-size:14px;color:#bed3e8;line-height:1.65}
+.businessCopy strong{color:#f1f7ff}
+@media(max-width:720px){.businessSummaryGrid{grid-template-columns:1fr}}
