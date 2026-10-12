@@ -1,4 +1,4 @@
-import type { AnalysisResult, BenchmarkResult, CatalystItem, FundamentalSnapshot, OptionContract } from './types';
+import type { AnalysisResult, BenchmarkResult, CatalystItem, FundamentalSnapshot, OptionContract, Bar } from './types';
 import { fmpCatalysts } from './providers/fmp';
 import { massiveOptions } from './providers/massive';
 import { massiveStockBars, quoteFromBars, massiveMarketClassification } from './providers/massiveStocks';
@@ -6,6 +6,7 @@ import { secFundamentals } from './secFundamentals';
 import { recentSecFilings } from './sec';
 import { technicalSnapshot } from './indicators';
 import { buildScores } from './scoring';
+import { knownFund, notApplicableScore, scoreFundCore, fundTimingSummary } from './funds';
 import { demoBars, demoCatalysts, demoFundamentals, demoQuote, demoSymbols } from './demo';
 
 function completeness(f:FundamentalSnapshot,bars:number){
@@ -22,8 +23,8 @@ function timing(t:ReturnType<typeof technicalSnapshot>){
   return Math.max(0,Math.min(100,Math.round(s*10)/10));
 }
 
-async function benchmark(symbol:'VTI'|'VOO',marketMode:boolean):Promise<BenchmarkResult>{
-  const bars=marketMode?await massiveStockBars(symbol):demoBars(symbol);
+async function benchmark(symbol:'VTI'|'VOO',marketMode:boolean,existingBars?:Bar[]):Promise<BenchmarkResult>{
+  const bars=existingBars??(marketMode?await massiveStockBars(symbol):demoBars(symbol));
   const q=marketMode?quoteFromBars(symbol,bars,symbol):demoQuote(symbol);
   const t=technicalSnapshot(bars);
   const score=timing(t);
@@ -92,24 +93,31 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   let catalysts:CatalystItem[]=[];
   let cik:string|undefined;
   let marketClassification:'OTC'|'Listed'|'Unknown'='Unknown';
+  let instrumentType:'Stock'|'ETF'=knownFund(symbol)?'ETF':'Stock';
 
   if(hasMassive){
     bars=await massiveStockBars(symbol);
     quote=quoteFromBars(symbol,bars,symbol);
-    const reference=await massiveMarketClassification(symbol).catch(()=>({market:'Unknown' as const,name:undefined as string|undefined}));
+    const reference=await massiveMarketClassification(symbol).catch(()=>({market:'Unknown' as const,name:undefined as string|undefined,isEtf:false}));
     marketClassification=reference.market;
-    quote.name=reference.name||symbol;
-
-    const sec=await secFundamentals(symbol,quote.price);
-    fundamentals=sec.snapshot;
-    companyName=reference.name||sec.companyName||symbol;
-    cik=sec.cik;
-
-    const [filings,fmpEvents]=await Promise.all([
-      recentSecFilings(cik).catch(()=>[]),
-      process.env.FMP_API_KEY ? fmpCatalysts(symbol).catch(()=>[]) : Promise.resolve([])
-    ]);
-    catalysts=[...filings,...fmpEvents].slice(0,16);
+    instrumentType=(knownFund(symbol)||reference.isEtf)?'ETF':'Stock';
+    quote.name=knownFund(symbol)?.name||reference.name||symbol;
+    if(instrumentType==='ETF'){
+      // An ETF owns a basket of securities. It does not have one company's
+      // P/E, debt/equity, 10-K earnings, or single-company catalyst schedule.
+      fundamentals={warnings:[]};
+      companyName=quote.name;
+    }else{
+      const sec=await secFundamentals(symbol,quote.price);
+      fundamentals=sec.snapshot;
+      companyName=reference.name||sec.companyName||symbol;
+      cik=sec.cik;
+      const [filings,fmpEvents]=await Promise.all([
+        recentSecFilings(cik).catch(()=>[]),
+        process.env.FMP_API_KEY ? fmpCatalysts(symbol).catch(()=>[]) : Promise.resolve([])
+      ]);
+      catalysts=[...filings,...fmpEvents].slice(0,16);
+    }
   }else{
     const use=demoSymbols.includes(symbol)?symbol:'RSKD';
     quote=demoQuote(use);
@@ -118,37 +126,88 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
     catalysts=demoCatalysts(use);
     companyName=quote.name||use;
     quote={...quote,symbol:use};
+    instrumentType=knownFund(use)?'ETF':'Stock';
+    if(instrumentType==='ETF'){
+      fundamentals={warnings:[]};
+      companyName=knownFund(use)?.name||quote.name||use;
+      catalysts=[];
+    }
   }
 
   const technicals=technicalSnapshot(bars);
-  const dataCompleteness=completeness(fundamentals,bars.length);
+  const dataCompleteness=instrumentType==='ETF'?0:completeness(fundamentals,bars.length);
   const priceDataAgeDays=quote.timestamp
     ?Math.max(0,Math.floor((Date.now()-Date.parse(quote.timestamp))/86400000))
     :undefined;
   const priceIsStale=priceDataAgeDays==null||priceDataAgeDays>7;
-  const built=buildScores(fundamentals,technicals,quote,catalysts,dataCompleteness,{
-    isOtc:marketClassification==='OTC',
-    stalePrice:priceIsStale
-  });
-  const benchmarks=await Promise.all([benchmark('VTI',hasMassive),benchmark('VOO',hasMassive)]);
+  const benchmarks=await Promise.all([
+    benchmark('VTI',hasMassive,instrumentType==='ETF'&&symbol==='VTI'?bars:undefined),
+    benchmark('VOO',hasMassive,instrumentType==='ETF'&&symbol==='VOO'?bars:undefined)
+  ]);
+  const profile=instrumentType==='ETF'?knownFund(symbol):undefined;
+  const ownBenchmark=instrumentType==='ETF'?benchmarks.find(b=>b.symbol===symbol):undefined;
+  const fundTiming=instrumentType==='ETF'&&!priceIsStale?(ownBenchmark?.timing??timing(technicals)):undefined;
+
+  const built=instrumentType==='ETF'
+    ?{
+      core:scoreFundCore(symbol),
+      growth:notApplicableScore('Company-specific growth model is not applicable to a fund that owns many businesses.'),
+      asymmetric:notApplicableScore('Single-company multi-bagger / turnaround model is not applicable to a diversified ETF.'),
+      swing:notApplicableScore('A standalone ETF swing-trading strategy has not yet been validated. See the separate market-timing assessment instead.'),
+      tradePlan:{status:'Pass' as const,reasoning:['No active ETF swing-trading plan is generated. Market timing is informational, not an entry/exit strategy.']}
+    }
+    :buildScores(fundamentals,technicals,quote,catalysts,dataCompleteness,{
+      isOtc:marketClassification==='OTC',
+      stalePrice:priceIsStale
+    });
 
   let options:OptionContract[]=[];
-  if(hasMassive)options=optionShortlist(await massiveOptions(symbol).catch(()=>[]),quote.price);
+  if(hasMassive&&instrumentType!=='ETF')options=optionShortlist(await massiveOptions(symbol).catch(()=>[]),quote.price);
 
-  const copy=language(companyName,fundamentals,technicals,built,benchmarks,dataCompleteness);
+  const copy=instrumentType==='ETF'
+    ?{
+      simpleSummary:profile
+        ?`${profile.name} is a diversified investment fund, not an individual business. Its high structural-quality rating reflects low costs, broad exposure and clear index design; the score does not guarantee returns. ${fundTiming==null?'Current timing data are too old to assess.':fundTimingSummary(technicals,fundTiming)}`
+        :`${companyName} is an exchange-traded fund. A reliable fund-quality score requires holdings, fees and index-methodology information; company earnings ratios do not apply. The fund is not yet rated.`,
+      likes:profile?[
+        profile.portfolioDescription,
+        'The reported annual fund expense ratio is 0.03% (Vanguard, April 28, 2026).',
+        'Buying the fund spreads investments across many companies rather than relying on just one.'
+      ]:[],
+      concerns:[
+        'The entire U.S. stock market can decline substantially, including diversified stock funds.',
+        profile?.concentrationNote||'We have not verified this fund’s holdings and operating costs.',
+        ...(priceIsStale?['The last reported price is too old for a current market-timing assessment.']:[])
+      ],
+      improve:['Decide whether the fund fits your investing time horizon and risk tolerance.','Check the issuer’s current expenses, holdings and concentration before investing.'],
+      psychology:['A high long-term fund-quality rating does not mean today is a risk-free entry point.']
+    }
+    :language(companyName,fundamentals,technicals,built,benchmarks,dataCompleteness);
   const warnings:string[]=[];
   if(!hasMassive)warnings.push('Demo mode is active. Add MASSIVE_API_KEY to enable end-of-day market data and SEC-based fundamentals.');
   if(hasMassive)warnings.push('Market prices are end-of-day on the free Massive Stocks plan, not real-time quotes.');
-  if(hasMassive&&dataCompleteness<60)warnings.push('Some fundamental fields were not available from SEC XBRL facts, so the model reduced confidence rather than inventing values.');
+  if(hasMassive&&instrumentType!=='ETF'&&dataCompleteness<60)warnings.push('Some fundamental fields were not available from SEC XBRL facts, so the model reduced confidence rather than inventing values.');
+  if(instrumentType==='ETF')warnings.push('Fund-quality scores are structural policy assessments based on fund characteristics, not live holdings audits or predicted returns. ETFs are analyzed differently from individual companies.');
   if(!process.env.OPENAI_API_KEY)warnings.push('Optional AI research summaries are disabled until OPENAI_API_KEY is configured.');
   const assessmentWarnings:string[]=[];
   if(hasMassive&&priceIsStale)assessmentWarnings.push(`The last available price is ${priceDataAgeDays??'an unknown number of'} calendar days old. It is not a current executable quote.`);
   if(hasMassive&&quote.price<0.01)assessmentWarnings.push('Sub-penny share prices can fluctuate by large percentages and may be difficult to buy or sell at the displayed price.');
   if(hasMassive&&marketClassification==='OTC')assessmentWarnings.push('OTC security: verify its current OTC Markets disclosure tier, trading eligibility, regulatory warnings, and bid/ask spread. This app does not currently have licensed OTC disclosure-status data.');
   if(hasMassive&&((quote.avgVolume??quote.volume??0)*quote.price)<50000)assessmentWarnings.push('Very low dollar trading volume can make historical price-based technical signals and modeled stop-losses unreliable.');
-  if(hasMassive&&built.core.score===null)assessmentWarnings.push('Financial reports are insufficient or too old for a defensible investment rating.');
+  if(hasMassive&&built.core.score===null)assessmentWarnings.push(instrumentType==='ETF'
+    ?'This fund is not yet covered by the specialized ETF-quality model.'
+    :'Financial reports are insufficient or too old for a defensible investment rating.');
 
   return {
+    instrumentType,
+    fundProfile:profile?{
+      tracks:profile.tracks,portfolioDescription:profile.portfolioDescription,
+      expenseRatioPct:profile.expenseRatioPct,expenseAsOf:profile.expenseAsOf,
+      approximateHoldings:profile.approximateHoldings,holdingsAsOf:profile.holdingsAsOf,
+      sourceUrl:profile.sourceUrl,concentrationNote:profile.concentrationNote
+    }:undefined,
+    fundTiming,
+    fundTimingExplanation:instrumentType==='ETF'?(fundTiming==null?'Not available: price history is stale.':fundTimingSummary(technicals,fundTiming)):undefined,
     marketClassification,
     priceDataAgeDays,
     assessmentWarnings,
