@@ -1,4 +1,5 @@
 import { knownLeveraged } from './leveraged';
+import type { AnalysisResult } from './types';
 
 export interface DailyBar {
   symbol:string;
@@ -18,6 +19,19 @@ export interface RadarLead {
   dayRangePercent:number;
   closeLocationPercent:number;
   priority:number;
+  verified?:{
+    core:number|null;
+    growth:number|null;
+    asymmetric:number|null;
+    swing:number|null;
+    featuredScore:number;
+    featuredModel:'Core Investment'|'Active Growth'|'Asymmetric Opportunity'|'Swing Trade';
+    dataCompleteness:number;
+    tradeStatus:'Qualified Trade'|'Watch'|'Pass';
+    evidenceAsOf:string;
+    verdict:'Elite (95+)'|'Strong (90+)'|'Research Watch (80+)';
+    explanation:string;
+  };
   reasons:string[];
   cautions:string[];
   leveraged?:{index:string;direction:string;multiple:number;opposite?:string};
@@ -35,6 +49,19 @@ export interface RadarReport {
   rejected:number;
   verifiedElite:null;
   verifiedStrong:null;
+  review?:{
+    reviewed:number;
+    proposed:number;
+    queued:number;
+    featured:number;
+    below80:number;
+    insufficientData:number;
+    failures:number;
+    limit:number;
+    completeMarketReview:false;
+    latestData:string;
+    message:string;
+  };
   categories:Record<RadarCategory,RadarLead[]>;
   limits:string[];
 }
@@ -136,7 +163,53 @@ export function screenDailyRadar(current:DailyBar[],previous:DailyBar[],reportDa
       'Security type for ordinary symbols is not fully verified in the bulk daily feed. Confirm it on the detailed analysis page.',
       'This is an end-of-day watchlist for the next session, not live premarket data, order-entry advice or a day-trade plan.',
       'ETFs, OTC securities and incomplete filings require dedicated due diligence. OTC securities are excluded from this radar.',
+      'Only candidates with full, verified stock-analysis scores of at least 80 can appear in the featured Radar. Missing evidence does not count as an 80.',
       'The free plan has request limits. Public or commercial redistribution requires an appropriate market-data license.'
     ]
+  };
+}
+
+/** A Radar lead is NOT qualified by the Radar priority. Only evidence-backed
+ * scores calculated by the very same stock model shown on the stock detail
+ * page can earn a featured placement. Never coerce null/unknown into a pass. */
+export function qualifyRadarLead(lead:RadarLead,result:AnalysisResult):RadarLead|null{
+  if(result.mode!=='live'||result.instrumentType!=='Stock')return null;
+  if(result.symbol!==lead.symbol)return null;
+  if(result.marketClassification!=='Listed')return null;
+  if(result.quote.price<2||result.priceDataAgeDays==null||result.priceDataAgeDays>5)return null;
+  // Must be based on the same trading session as the Radar data; stale
+  // ratings would be even more misleading than an activity-only screen.
+  if(result.quote.timestamp==null)return null;
+  if(result.assessmentWarnings?.some(w=>/last available price|very low dollar trading volume/i.test(w)))return null;
+  const scorePairs=[
+    {name:'Core Investment' as const,score:result.scores.core.score},
+    {name:'Active Growth' as const,score:result.scores.growth.score},
+    {name:'Asymmetric Opportunity' as const,score:result.scores.asymmetric.score},
+    {name:'Swing Trade' as const,score:result.scores.swing.score}
+  ];
+  const qualifying=scorePairs.filter(x=>x.score!=null&&x.score>=80 &&
+    !(x.name==='Swing Trade'&&result.tradePlan.status==='Pass'));
+  if(!qualifying.length)return null;
+  const best=qualifying.sort((a,b)=>(b.score??0)-(a.score??0))[0];
+  const score=best.score!;
+  return {
+    ...lead,
+    verified:{
+      core:result.scores.core.score,
+      growth:result.scores.growth.score,
+      asymmetric:result.scores.asymmetric.score,
+      swing:result.scores.swing.score,
+      featuredScore:score,
+      featuredModel:best.name,
+      dataCompleteness:result.dataCompleteness,
+      tradeStatus:result.tradePlan.status,
+      evidenceAsOf:result.quote.timestamp||'',
+      verdict:score>=95?'Elite (95+)':score>=90?'Strong (90+)':'Research Watch (80+)',
+      explanation:best.name==='Swing Trade'
+        ? score>=90&&result.tradePlan.status==='Qualified Trade'
+          ?'An eligible swing-trading setup is shown in the full analysis. Confirm its conditional entry levels with current quotes.'
+          :'Technical conditions deserve observation, but no active trading plan is approved.'
+        :'This passed the stock research threshold, not necessarily the swing-trade threshold. Check the separate Swing Trade score before attempting a trade.'
+    }
   };
 }
