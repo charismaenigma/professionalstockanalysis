@@ -21,6 +21,7 @@ export interface RadarLead {
   closeLocationPercent:number;
   priority:number;
   verified?:{
+    business?:number|null;
     core:number|null;
     growth:number|null;
     asymmetric:number|null;
@@ -231,6 +232,7 @@ export function qualifyRadarLead(lead:RadarLead,result:RadarRatingSnapshot):Rada
   return {
     ...lead,
     verified:{
+      business:result.scores.business?.score??null,
       core:result.scores.core.score,
       growth:result.scores.growth.score,
       asymmetric:result.scores.asymmetric.score,
