@@ -127,7 +127,15 @@ describe('Scoring v2 structural protections and score ceilings',()=>{
    const r=buildScores(f,t,q,[],75);
    expect(r.core.score).toBeLessThan(90);
    expect(r.core.confidence).not.toBe('High');
+   expect(r.business.confidence).not.toBe('High');
    expect(r.core.score).not.toBeNull();
+ });
+ it('requires actual ROIC and free-cash-flow valuation for Elite confidence',()=>{
+   const f={...ideal,returnOnInvestedCapital:undefined};
+   const r=buildScores(f,t,q,[],93);
+   expect(r.core.confidence).toBe('Moderate');
+   expect(r.business.score).toBeLessThan(90);
+   expect(r.core.score).toBeLessThan(90);
  });
  it('cannot turn a rejected mathematical trade into an approved 95+ signal',()=>{
    const r=buildScores(ideal,{...t,resistance:101},q,[],100);
