@@ -131,14 +131,14 @@ export function buildScores(
   // A mathematically attractive reward/risk ratio cannot override a rejected setup.
   // Pass setups are capped below the research-only band; Watch setups cannot become
   // Strong/Elite until the underlying setup itself qualifies.
-  if(trade.status==='Pass' && swing.score>69.9){
+  if(trade.status==='Pass' && swing.score!=null && swing.score>69.9){
     swing={...swing,score:69.9,band:band(69.9)};
-  }else if(trade.status==='Watch' && swing.score>89.9){
+  }else if(trade.status==='Watch' && swing.score!=null && swing.score>89.9){
     swing={...swing,score:89.9,band:band(89.9)};
   }
 
   // Full actionable plans require at least a 90 Swing Trade score.
-  if(trade.status==='Qualified Trade' && swing.score<90){
+  if(trade.status==='Qualified Trade' && (swing.score==null || swing.score<90)){
     trade.status='Watch';
     trade.reasoning.push('The setup has measurable levels, but the overall Swing Trade score is below 90, so MarketClarity will not present it as an active trade plan.');
   }
@@ -184,6 +184,11 @@ export function buildScores(
   }
 
   return {core:coreFinal,growth:growthFinal,asymmetric:asymmetricFinal,swing:swingFinal,tradePlan:trade};
+}
+
+function roundStockPrice(n:number):number{
+  const digits=n>=1?2:n>=0.1?4:n>=0.001?6:8;
+  return Number(n.toFixed(digits));
 }
 
 export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],dataCompleteness=100):TradePlan{
@@ -241,13 +246,13 @@ export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],data
 
   return {
     status,
-    preferredEntryLow:+entryLow.toFixed(2),
-    preferredEntryHigh:+entryHigh.toFixed(2),
-    confirmationAbove:+confirmation.toFixed(2),
-    invalidationBelow:+invalidation.toFixed(2),
-    target1:+target1.toFixed(2),
-    target2:+target2.toFixed(2),
-    stretchTarget:+stretch.toFixed(2),
+    preferredEntryLow:roundStockPrice(entryLow),
+    preferredEntryHigh:roundStockPrice(entryHigh),
+    confirmationAbove:roundStockPrice(confirmation),
+    invalidationBelow:roundStockPrice(invalidation),
+    target1:roundStockPrice(target1),
+    target2:roundStockPrice(target2),
+    stretchTarget:roundStockPrice(stretch),
     rewardRisk:+rr.toFixed(2),
     reasoning:reasons
   };
