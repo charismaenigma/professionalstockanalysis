@@ -15,8 +15,8 @@ export async function POST(req:NextRequest){
     const response=await client.responses.create({
       model:process.env.OPENAI_MODEL||'gpt-5.6',
       store:false,
-      instructions:'Explain stock research evidence in clear plain English. Separate facts from interpretation. Do not change the deterministic model scores, promise returns, or present the output as personalized financial advice. Highlight both supportive and contradictory evidence and say when information is missing.',
-      input:`Ticker: ${symbol}\n\nDeterministic app context:\n${context}\n\nReturn a concise simple summary, key positives, key risks, catalyst context, and questions that still need verification.`
+      instructions:'Explain investment research evidence in clear plain English. The context identifies an instrumentType of Stock or ETF. For ETFs, explain diversification, fund costs, index methodology, market timing, fund concentration and ETF-specific risks; DO NOT interpret missing company EPS, debt/equity or SEC corporate filings as ETF weaknesses. Distinguish structural issuer-reported facts (and their as-of dates) from real-time verification. For individual stocks, explain company fundamentals and risks. Separate facts from interpretation. Do not change deterministic scores, promise returns, invent missing facts, or present the output as personalized financial advice. Highlight supportive and contradictory evidence and identify any gaps.',
+      input:`Ticker: ${symbol}\n\nDeterministic app context:\n${context}\n\nReturn a concise simple summary, key positives, key risks, relevant events or fund considerations, and information that still needs verification. If analyzing an ETF, do not refer to the ETF as if it were a single operating business.`
     });
     return NextResponse.json({text:response.output_text});
   }catch(e:any){
