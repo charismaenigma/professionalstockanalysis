@@ -1,5 +1,6 @@
 import { knownLeveraged } from './leveraged';
 import type { AnalysisResult } from './types';
+type RadarRatingSnapshot=Pick<AnalysisResult,'mode'|'instrumentType'|'marketClassification'|'symbol'|'quote'|'priceDataAgeDays'|'assessmentWarnings'|'scores'|'tradePlan'|'dataCompleteness'>;
 
 export interface DailyBar {
   symbol:string;
@@ -172,10 +173,10 @@ export function screenDailyRadar(current:DailyBar[],previous:DailyBar[],reportDa
 /** A Radar lead is NOT qualified by the Radar priority. Only evidence-backed
  * scores calculated by the very same stock model shown on the stock detail
  * page can earn a featured placement. Never coerce null/unknown into a pass. */
-export function qualifyRadarLead(lead:RadarLead,result:AnalysisResult):RadarLead|null{
+export function qualifyRadarLead(lead:RadarLead,result:RadarRatingSnapshot):RadarLead|null{
   if(result.mode!=='live'||result.instrumentType!=='Stock')return null;
   if(result.symbol!==lead.symbol)return null;
-  if(result.marketClassification!=='Listed')return null;
+  if(result.marketClassification==='OTC')return null;
   if(result.quote.price<2||result.priceDataAgeDays==null||result.priceDataAgeDays>5)return null;
   // Must be based on the same trading session as the Radar data; stale
   // ratings would be even more misleading than an activity-only screen.
