@@ -193,53 +193,61 @@ function roundStockPrice(n:number):number{
 
 export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],dataCompleteness=100):TradePlan{
   const p=q.price, atrv=t.atr14;
-  if(!p||!atrv||!t.support||!t.resistance){
-    return {status:'Pass',reasoning:['PASS: No clear support/resistance and volatility structure could be calculated.']};
+  if(!Number.isFinite(p)||!Number.isFinite(atrv)||p<=0||atrv==null||atrv<=0
+     ||t.support==null||t.resistance==null
+     ||!Number.isFinite(t.support)||!Number.isFinite(t.resistance)){
+    return {status:'Pass',reasoning:['PASS: No reliable price, support, resistance, or volatility level could be calculated.']};
   }
 
-  const rawA=Math.max(t.support,p-1.1*atrv);
-  const rawB=p-.25*atrv;
-  const entryLow=Math.min(rawA,rawB);
-  const entryHigh=Math.max(rawA,rawB);
-  const plannedEntry=(entryLow+entryHigh)/2;
-
+  // ONE scenario, not a mix of two incompatible trading plans:
+  // wait for a pullback into a range, then a reclaim of its upper boundary.
+  // Reward/risk uses the more conservative upper boundary as the entry.
+  const rawSupport=Math.max(t.support,p-1.1*atrv);
+  const rawPullback=p-.25*atrv;
+  const entryLow=Math.min(rawSupport,rawPullback);
+  const entryHigh=Math.max(rawSupport,rawPullback);
   const invalidation=Math.min(t.support-.55*atrv,entryLow-.50*atrv);
-  const risk=Math.max(atrv*.25,plannedEntry-invalidation);
+  const risk=entryHigh-invalidation;
 
-  const confirmation=t.resistance+.15*atrv;
-  const target1=Math.max(t.resistance,plannedEntry+2*risk,confirmation+.10*atrv);
-  const target2=Math.max(target1+.75*atrv,plannedEntry+3*risk);
-  const stretch=Math.max(target2+.75*atrv,plannedEntry+4*risk);
-  const rr=(target1-plannedEntry)/risk;
-
+  // A target must be an OBSERVED price level. Do not invent a 2R+ target
+  // simply to make a rejected setup look attractive.
+  const target=t.resistance;  // highest observed high in the last 20 sessions
+  const rr=risk>0?(target-entryHigh)/risk:0;
   const volume=q.avgVolume??q.volume??0;
-  const binarySoon=c.some(x=>x.binary&&x.date&&Math.abs(new Date(x.date).getTime()-Date.now())<14*86400000);
+  const dollarTurnover=volume*p;
   const downtrend=t.trend==='down'||t.trend==='strong-down';
-  const oversoldDowntrend=(t.rsi14??50)<35 && ((t.sma50!=null&&p<t.sma50)||(t.sma200!=null&&p<t.sma200));
+  const oversoldDowntrend=(t.rsi14??50)<35 &&
+    ((t.sma50!=null&&p<t.sma50)||(t.sma200!=null&&p<t.sma200));
   const extended=(t.distanceSma20Atr??0)>3;
   const subTwo=p<2;
   const illiquid=volume>0&&volume<200000;
-
+  const binarySoon=c.some(x=>x.binary&&x.date&&Math.abs(new Date(x.date).getTime()-Date.now())<14*86400000);
   const reasons:string[]=[];
-  if(p<0.01)reasons.push('PASS: Sub-penny prices need more precision and reliable bid/ask liquidity before an executable setup can be established.');
-  if(volume*p<50000)reasons.push('PASS: Average daily dollar turnover is too low for a dependable entry and exit plan.');
-  if(rr<2)reasons.push('PASS: Reward/risk is below 2:1.');
-  if(illiquid)reasons.push('PASS: Trading volume is too low for the standard swing-trade model; execution and spreads may be unreliable.');
-  if(dataCompleteness<45)reasons.push('Insufficient fundamental data for a fully qualified trade; treat the setup as lower confidence.');
-  if(subTwo)reasons.push('Sub-$2 stock: price gaps, spreads and volatility can make apparent reward/risk less reliable.');
-  if(downtrend)reasons.push('The stock is in a downtrend, so the model requires evidence of reversal rather than treating a low price as an entry signal.');
-  if(oversoldDowntrend)reasons.push('RSI is low while price remains below important moving averages; this can be a falling trend rather than a bargain.');
-  if(binarySoon)reasons.push('A binary catalyst is close enough to create overnight gap risk.');
-  if(extended)reasons.push('Price is extended well above its short-term average; chasing risk is elevated.');
+
+  if(p<.01)reasons.push('PASS: Sub-penny prices can have very large spreads, gaps, and unreliable execution.');
+  if(dollarTurnover<50000)reasons.push('PASS: Average daily dollar turnover is too low for a dependable trade entry and exit.');
+  if(illiquid)reasons.push('PASS: Average share volume is too low for this swing-trading method.');
+  if(!Number.isFinite(rr)||rr<2)reasons.push('PASS: The observed 20-session resistance does not offer 2:1 reward/risk from the conservative planned entry. No target was invented to force qualification.');
+  if(dataCompleteness<45)reasons.push('Financial information is incomplete; the company risk cannot be verified to this method’s standard.');
+  if(subTwo)reasons.push('Sub-$2 shares may experience wide spreads, gaps and difficult order execution.');
+  if(downtrend)reasons.push('The price trend is downward; a lower price alone does not establish a reversal.');
+  if(oversoldDowntrend)reasons.push('RSI is low while the price remains below important longer-term averages.');
+  if(binarySoon)reasons.push('A nearby binary event could cause a gap through the planned exit level.');
+  if(extended)reasons.push('Price is extended above its recent average; chasing the move adds risk.');
 
   let status:TradePlan['status']='Qualified Trade';
-  if(rr<2||illiquid||(subTwo&&downtrend)||oversoldDowntrend||p<0.01||volume*p<50000)status='Pass';
-  else if(dataCompleteness<45||subTwo||downtrend||binarySoon||extended)status='Watch';
+  if(!Number.isFinite(rr)||rr<2||illiquid||(subTwo&&downtrend)||oversoldDowntrend||p<.01||dollarTurnover<50000){
+    status='Pass';
+  }else if(dataCompleteness<45||subTwo||downtrend||binarySoon||extended){
+    status='Watch';
+  }
 
   if(status==='Qualified Trade'){
-    reasons.push('Entry, invalidation and first target are ordered correctly and provide at least 2:1 modeled reward/risk.');
+    reasons.push('Conditional pullback scenario only: price must first trade inside the entry area, then regain its upper boundary without hitting the invalidation level. This is not a market-order signal.');
+    reasons.push('The first potential exit area is the actual high observed over the last 20 sessions. It is not a forecast or guarantee.');
+    reasons.push('An exit order may fill below the planned stop if the stock gaps or liquidity disappears. Recheck the chart, spreads and news before using these end-of-day levels.');
   }else if(status==='Watch'){
-    reasons.push('The price structure can be measured, but one or more risk conditions prevent this from being a fully qualified trade right now.');
+    reasons.push('The measurable price levels do not yet qualify as an active trade plan. Wait for the identified risk conditions to improve.');
   }else{
     reasons.push('No active trade plan should be used while these disqualifying conditions remain.');
   }
@@ -248,12 +256,12 @@ export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],data
     status,
     preferredEntryLow:roundStockPrice(entryLow),
     preferredEntryHigh:roundStockPrice(entryHigh),
-    confirmationAbove:roundStockPrice(confirmation),
+    // Confirmation means price recovered the top of the pullback range
+    // AFTER visiting the range, not a separate breakout entry.
+    confirmationAbove:roundStockPrice(entryHigh),
     invalidationBelow:roundStockPrice(invalidation),
-    target1:roundStockPrice(target1),
-    target2:roundStockPrice(target2),
-    stretchTarget:roundStockPrice(stretch),
-    rewardRisk:+rr.toFixed(2),
+    target1:roundStockPrice(target),
+    rewardRisk:Number.isFinite(rr)?+rr.toFixed(2):undefined,
     reasoning:reasons
   };
 }
