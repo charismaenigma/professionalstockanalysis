@@ -1,7 +1,7 @@
 import type { AnalysisResult, BenchmarkResult, CatalystItem, FundamentalSnapshot, OptionContract } from './types';
 import { fmpCatalysts } from './providers/fmp';
 import { massiveOptions } from './providers/massive';
-import { massiveStockBars, quoteFromBars } from './providers/massiveStocks';
+import { massiveStockBars, quoteFromBars, massiveMarketClassification } from './providers/massiveStocks';
 import { secFundamentals } from './secFundamentals';
 import { recentSecFilings } from './sec';
 import { technicalSnapshot } from './indicators';
@@ -45,7 +45,8 @@ function optionShortlist(options:OptionContract[],price:number){
 
 function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof technicalSnapshot>,scores:ReturnType<typeof buildScores>,benchmarks:BenchmarkResult[],dataCompleteness:number){
   const vals=[scores.core.score,scores.growth.score,scores.asymmetric.score,scores.swing.score];
-  const best=Math.max(...vals);
+  const numbers=vals.filter((v):v is number=>v!=null);
+  const best=numbers.length?Math.max(...numbers):0;
   const likes:string[]=[];
   const concerns:string[]=[];
   const improve:string[]=[];
@@ -66,7 +67,9 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
   if((t.rsi14??50)>70)psychology.push('FOMO check: avoid making a decision only because the price has risen quickly.');
   if(best>=90)psychology.push('Confirmation-bias check: compare supportive and contradictory evidence before acting.');
   const base=[...benchmarks].sort((a,b)=>(b.longTermQuality*.7+b.timing*.3)-(a.longTermQuality*.7+a.timing*.3))[0];
-  const simpleSummary=dataCompleteness<45
+  const simpleSummary=numbers.length===0
+    ?`${company} cannot be rated reliably with the available financial disclosures and/or trade data. An absence of verified evidence is not evidence that the stock is attractive.`
+    :dataCompleteness<45
     ?`${company} does not have enough complete fundamental data for a high-confidence investment conclusion. Technical information can still be useful, but the app will not treat missing data as neutral evidence.`
     :best>=95
     ?`${company} reaches the Elite range in at least one model. The score is a research classification, not a probability of profit. ${base.symbol} remains the diversified comparison point.`
@@ -88,14 +91,18 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   let companyName=symbol;
   let catalysts:CatalystItem[]=[];
   let cik:string|undefined;
+  let marketClassification:'OTC'|'Listed'|'Unknown'='Unknown';
 
   if(hasMassive){
     bars=await massiveStockBars(symbol);
     quote=quoteFromBars(symbol,bars,symbol);
+    const reference=await massiveMarketClassification(symbol).catch(()=>({market:'Unknown' as const}));
+    marketClassification=reference.market;
+    quote.name=reference.name||symbol;
 
     const sec=await secFundamentals(symbol,quote.price);
     fundamentals=sec.snapshot;
-    companyName=sec.companyName||symbol;
+    companyName=reference.name||sec.companyName||symbol;
     cik=sec.cik;
 
     const [filings,fmpEvents]=await Promise.all([
@@ -115,7 +122,14 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
 
   const technicals=technicalSnapshot(bars);
   const dataCompleteness=completeness(fundamentals,bars.length);
-  const built=buildScores(fundamentals,technicals,quote,catalysts,dataCompleteness);
+  const priceDataAgeDays=quote.timestamp
+    ?Math.max(0,Math.floor((Date.now()-Date.parse(quote.timestamp))/86400000))
+    :undefined;
+  const priceIsStale=priceDataAgeDays==null||priceDataAgeDays>7;
+  const built=buildScores(fundamentals,technicals,quote,catalysts,dataCompleteness,{
+    isOtc:marketClassification==='OTC',
+    stalePrice:priceIsStale
+  });
   const benchmarks=await Promise.all([benchmark('VTI',hasMassive),benchmark('VOO',hasMassive)]);
 
   let options:OptionContract[]=[];
@@ -127,8 +141,17 @@ export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   if(hasMassive)warnings.push('Market prices are end-of-day on the free Massive Stocks plan, not real-time quotes.');
   if(hasMassive&&dataCompleteness<60)warnings.push('Some fundamental fields were not available from SEC XBRL facts, so the model reduced confidence rather than inventing values.');
   if(!process.env.OPENAI_API_KEY)warnings.push('Optional AI research summaries are disabled until OPENAI_API_KEY is configured.');
+  const assessmentWarnings:string[]=[];
+  if(hasMassive&&priceIsStale)assessmentWarnings.push(`The last available price is ${priceDataAgeDays??'an unknown number of'} calendar days old. It is not a current executable quote.`);
+  if(hasMassive&&quote.price<0.01)assessmentWarnings.push('Sub-penny share prices can fluctuate by large percentages and may be difficult to buy or sell at the displayed price.');
+  if(hasMassive&&marketClassification==='OTC')assessmentWarnings.push('OTC security: verify its current OTC Markets disclosure tier, trading eligibility, regulatory warnings, and bid/ask spread. This app does not currently have licensed OTC disclosure-status data.');
+  if(hasMassive&&((quote.avgVolume??quote.volume??0)*quote.price)<50000)assessmentWarnings.push('Very low dollar trading volume can make historical price-based technical signals and modeled stop-losses unreliable.');
+  if(hasMassive&&built.core.score===null)assessmentWarnings.push('Financial reports are insufficient or too old for a defensible investment rating.');
 
   return {
+    marketClassification,
+    priceDataAgeDays,
+    assessmentWarnings,
     symbol:quote.symbol,
     companyName,
     mode:hasMassive?'live':'demo',
