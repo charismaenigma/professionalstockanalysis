@@ -1,189 +1,239 @@
 import type { FundamentalSnapshot, TechnicalSnapshot, ModelScore, ScoreBand, ScoreComponent, TradePlan, CatalystItem, Quote } from './types';
 
+// MarketClarity research score engine v2.0. Scores are transparent rule-based
+// assessments, NOT calibrated probabilities of beating the market.
+export const MODEL_VERSION='2.0.0-research';
 export const clamp=(n:number,min=0,max=100)=>Math.max(min,Math.min(max,n));
 export const band=(s:number):ScoreBand=>s>=95?'Elite Opportunity':s>=90?'Strong Candidate':s>=85?'Watchlist':s>=70?'Research Only':'Pass';
-const lin=(x:number|undefined,bad:number,good:number)=>x==null?50:clamp((x-bad)/(good-bad)*100);
-const inv=(x:number|undefined,good:number,bad:number)=>x==null?50:clamp((bad-x)/(bad-good)*100);
-const finite=(x:number|undefined,fallback=50)=>Number.isFinite(x)?x!:fallback;
+const valid=(x:number|undefined):x is number=>x!=null&&Number.isFinite(x);
+const lin=(x:number|undefined,bad:number,good:number)=>valid(x)?clamp((x-bad)/(good-bad)*100):undefined;
+const inv=(x:number|undefined,good:number,bad:number)=>valid(x)?clamp((bad-x)/(bad-good)*100):undefined;
+type Part={name:string;score:number|undefined;weight:number;help:string};
 
-function comp(name:string,raw:number,weight:number,explanation:string):ScoreComponent{
-  return {name,raw:clamp(raw),weight,contribution:clamp(raw)*weight,explanation};
+// Missing signals are omitted, never silently replaced by an average 50/100.
+// Gaps reduce confidence / cap the grade below Strong or Elite.
+function average(parts:Part[]):number|undefined{
+  const have=parts.filter(p=>valid(p.score));
+  const weight=have.reduce((s,p)=>s+p.weight,0);
+  return weight>0?have.reduce((s,p)=>s+(p.score??0)*p.weight,0)/weight:undefined;
 }
-function finalize(components:ScoreComponent[],vetoes:string[]=[]):ModelScore{
-  const denom=components.reduce((s,c)=>s+c.weight,0)||1;
-  let score=components.reduce((s,c)=>s+c.contribution,0)/denom;
-  if(vetoes.some(v=>/critical|insufficient reliable|going concern|accounting/i.test(v))) score=Math.min(score,84.9);
+function component(p:Part):ScoreComponent{
+  return {name:p.name,raw:clamp(p.score??0),weight:p.weight,contribution:(p.score??0)*p.weight,explanation:p.help};
+}
+function finalize(parts:Part[],vetoes:string[],confidence:'High'|'Moderate'|'Low',max?:number):ModelScore{
+  const have=parts.filter(p=>valid(p.score));
+  const sum=have.reduce((s,p)=>s+p.weight,0);
+  const coverage=parts.reduce((s,p)=>s+p.weight,0);
+  const missingInputs=parts.filter(p=>!valid(p.score)).map(p=>p.name);
+  if(sum===0)return {score:null,band:'Not Rated',components:[],vetoes:[...vetoes,'Insufficient metric evidence.'],modelVersion:MODEL_VERSION,confidence:'Low',missingInputs};
+  let score=have.reduce((s,p)=>s+(p.score??0)*p.weight,0)/sum;
+  // A nearly-perfect score requires near-complete measurable evidence,
+  // not just one exceptional available metric.
+  if(sum/coverage<.8)score=Math.min(score,84.9);
+  else if(sum/coverage<.98)score=Math.min(score,94.9);
+  if(confidence==='Low')score=Math.min(score,79.9);
+  if(confidence==='Moderate')score=Math.min(score,89.9);
+  if(vetoes.some(v=>/going concern|material weakness|restatement|auditor|extreme recent share dilution|critical/i.test(v)))score=Math.min(score,79.9);
+  if(max!=null)score=Math.min(score,max);
   score=Math.round(clamp(score)*10)/10;
-  return {score,band:band(score),components,vetoes};
+  return {score,band:band(score),components:have.map(component),vetoes,modelVersion:MODEL_VERSION,confidence,missingInputs};
 }
-
 function financialHealth(f:FundamentalSnapshot){
-  const liquidity=lin(f.currentRatio,0.8,2.5);
-  const leverage=inv(f.debtToEquity,0.2,2.0);
-  const fcf=f.freeCashFlowMargin==null?50:lin(f.freeCashFlowMargin,-5,20);
-  const netCash=f.cash!=null&&f.debt!=null?(f.cash>=f.debt?85:lin((f.cash||0)/(f.debt||1),0,1)):50;
-  return 0.30*liquidity+0.30*leverage+0.25*fcf+0.15*netCash;
+  const liquidAssets=valid(f.cash)?f.cash+(f.marketableSecurities??0):undefined;
+  const cashCover=liquidAssets!=null&&valid(f.debt)
+    ?(f.debt===0?100:lin(liquidAssets/f.debt,.15,1.25)):undefined;
+  return average([
+    {name:'Current ratio',score:lin(f.currentRatio,.7,2),weight:.20,help:'Short-term assets compared with short-term obligations; below 1 is not automatically distress for a cash-generative business.'},
+    {name:'Leverage',score:inv(f.debtToEquity,.15,1.9),weight:.15,help:'Debt relative to shareholder equity. Buybacks can reduce book equity without weakening operations.'},
+    {name:'Cash generation',score:lin(f.freeCashFlowMargin,-5,22),weight:.35,help:'Cash left over after capital spending as a percentage of annual sales.'},
+    {name:'Liquid resources',score:cashCover,weight:.30,help:'Cash and separately reported marketable securities relative to reported debt; not a full credit analysis.'}
+  ]);
 }
 function quality(f:FundamentalSnapshot){
-  const roe=lin(f.returnOnEquity,0,25), roic=lin(f.returnOnInvestedCapital,0,20);
-  const op=f.operatingMargin==null?50:lin(f.operatingMargin,0,25);
-  const gm=f.grossMargin==null?50:lin(f.grossMargin,15,60);
-  return .30*roe+.30*roic+.25*op+.15*gm;
+  return average([
+    {name:'Return on equity',score:lin(f.returnOnEquity,0,28),weight:.20,help:'Profit relative to recorded shareholder equity; repurchases can affect this ratio.'},
+    {name:'Return on invested capital',score:lin(f.returnOnInvestedCapital,0,22),weight:.35,help:'After-tax operating profit compared with financing employed in the business. SEC-derived estimate, not an audited issuer ROIC.'},
+    {name:'Operating margin',score:lin(f.operatingMargin,0,28),weight:.30,help:'Operating profit as a share of annual sales.'},
+    {name:'Gross margin',score:lin(f.grossMargin,10,60),weight:.15,help:'Sales after direct production/service costs; comparisons vary by industry.'}
+  ]);
 }
 function growth(f:FundamentalSnapshot){
-  const rev=lin(f.revenueGrowth,-5,30), eps=lin(f.epsGrowth,-10,35);
-  const margin=f.operatingMargin==null?50:lin(f.operatingMargin,-5,25);
-  return .45*rev+.35*eps+.20*margin;
+  return average([
+    {name:'Revenue growth',score:lin(f.revenueGrowth,-5,30),weight:.42,help:'Quarterly revenue compared with the same quarter last year.'},
+    {name:'Earnings growth',score:lin(f.epsGrowth,-10,35),weight:.40,help:'Quarterly diluted EPS compared with the same quarter last year; may be influenced by buybacks and one-off items.'},
+    {name:'Profitability base',score:lin(f.operatingMargin,-8,25),weight:.18,help:'Profitable sales can better support growth, but a single period does not prove durability.'}
+  ]);
 }
 function valuation(f:FundamentalSnapshot){
   const pe=f.forwardPE??f.priceToEarnings;
-  const peScore=pe==null?50:(pe<=0?25:inv(pe,12,50));
-  const psScore=f.priceToSales==null?50:inv(f.priceToSales,1.5,12);
-  const pfcf=f.priceToFreeCashFlow==null?50:(f.priceToFreeCashFlow<=0?25:inv(f.priceToFreeCashFlow,12,60));
-  const evs=f.evToSales==null?50:inv(f.evToSales,1.5,12);
-  return .35*peScore+.25*psScore+.25*pfcf+.15*evs;
+  return average([
+    {name:'Earnings multiple',score:valid(pe)?(pe<=0?0:inv(pe,12,50)):undefined,weight:.35,help:'Share price relative to trailing earnings; a high number can require unusually strong growth.'},
+    {name:'Sales multiple',score:inv(f.priceToSales,1.5,12),weight:.20,help:'Company market value compared with trailing annual sales; margin structure matters.'},
+    {name:'Free cash flow multiple',score:valid(f.priceToFreeCashFlow)?(f.priceToFreeCashFlow<=0?0:inv(f.priceToFreeCashFlow,12,60)):undefined,weight:.30,help:'Market value relative to trailing free cash flow.'},
+    {name:'Enterprise value to sales',score:inv(f.evToSales,1.5,12),weight:.15,help:'Operating business value relative to sales, including debt and excluding counted cash.'}
+  ]);
 }
 function shareholder(f:FundamentalSnapshot){
-  const dilution=f.sharesGrowth==null?50:inv(f.sharesGrowth,-5,20);
-  const sbc=f.latestAnnual?.stockBasedCompensation && f.latestAnnual?.revenue
-    ? inv((f.latestAnnual.stockBasedCompensation/f.latestAnnual.revenue)*100,2,18):55;
-  return .7*dilution+.3*sbc;
+  const dilution=inv(f.sharesGrowth,-5,20);
+  const sbc=f.latestAnnual?.revenue&&f.latestAnnual.stockBasedCompensation!=null
+    ?inv(f.latestAnnual.stockBasedCompensation/f.latestAnnual.revenue*100,1,18):undefined;
+  return average([
+    {name:'Share count change',score:dilution,weight:.75,help:'Growth in shares can dilute each investor; fewer shares can reflect repurchases.'},
+    {name:'Stock-based compensation',score:sbc,weight:.25,help:'Stock paid to employees relative to sales, rather than ignoring its cost.'}
+  ]);
 }
 function technical(t:TechnicalSnapshot){
-  let trendScore=t.trend==='strong-up'?92:t.trend==='up'?80:t.trend==='sideways'?55:t.trend==='down'?35:t.trend==='strong-down'?18:50;
-  const r=t.rsi14==null?50:(t.rsi14>=45&&t.rsi14<=68?85:t.rsi14>68&&t.rsi14<=78?65:t.rsi14>=35&&t.rsi14<45?65:t.rsi14>78?42:35);
-  const ext=t.distanceSma50Atr==null?50:(Math.abs(t.distanceSma50Atr)<=2?85:Math.abs(t.distanceSma50Atr)<=4?65:35);
-  const vol=t.relativeVolume==null?50:lin(t.relativeVolume,.6,2.0);
-  return .45*trendScore+.25*r+.20*ext+.10*vol;
+  const trend=t.trend==='strong-up'?100:t.trend==='up'?82:t.trend==='sideways'?55:t.trend==='down'?30:t.trend==='strong-down'?10:undefined;
+  const r=valid(t.rsi14)?(t.rsi14>=48&&t.rsi14<=65?100:t.rsi14>=40&&t.rsi14<=72?80:t.rsi14>=35&&t.rsi14<=78?60:25):undefined;
+  const ext=valid(t.distanceSma50Atr)?(Math.abs(t.distanceSma50Atr)<=1.5?100:Math.abs(t.distanceSma50Atr)<=3?75:Math.abs(t.distanceSma50Atr)<=5?45:15):undefined;
+  return average([
+    {name:'Trend',score:trend,weight:.48,help:'Direction of price and its important moving averages.'},
+    {name:'RSI regime',score:r,weight:.24,help:'Measures recent upward closes against downward closes over 14 sessions; not a standalone buy/sell signal.'},
+    {name:'Extension',score:ext,weight:.20,help:'Distance between price and the 50-day average in units of recent typical daily moves.'},
+    {name:'Trading volume',score:lin(t.relativeVolume,.55,1.8),weight:.08,help:'Current session volume compared with typical recent session volume.'}
+  ]);
 }
-function risk(f:FundamentalSnapshot, quote:Quote, catalysts:CatalystItem[]){
-  let s=80;
-  if(f.debtToEquity!=null&&f.debtToEquity>2)s-=20;
-  if(f.sharesGrowth!=null&&f.sharesGrowth>15)s-=18;
-  if((quote.avgVolume??quote.volume??0)<200000)s-=15;
-  if(catalysts.some(c=>c.binary))s-=12;
-  s-=Math.min(25,f.warnings.length*5);
-  return clamp(s);
+function risk(f:FundamentalSnapshot,q:Quote,c:CatalystItem[]){
+  let score=100;
+  if(valid(f.debtToEquity)&&f.debtToEquity>2)score-=20;
+  if(valid(f.sharesGrowth)&&f.sharesGrowth>15)score-=15;
+  if((q.avgVolume??q.volume??0)<200_000)score-=20;
+  if(q.price<2)score-=20;
+  if(c.some(x=>x.binary))score-=12;
+  score-=Math.min(35,f.warnings.length*7);
+  return clamp(score);
 }
-function catalyst(c:CatalystItem[]){
-  if(!c.length)return 45;
-  const next=c.filter(x=>!x.date||new Date(x.date)>=new Date());
-  if(next.some(x=>x.binary))return 65;
-  return Math.min(85,55+next.length*8);
+function verifiedCatalyst(c:CatalystItem[]){
+  // Filing dates and filing counts are disclosures, NOT automatically positive events.
+  const actual=c.filter(x=>x.date&&new Date(x.date)>=new Date() &&
+    x.type!=='SEC Filing' && /earnings|FDA|approval|regulatory|merger|decision/i.test(x.type+' '+x.title));
+  if(!actual.length)return 60; // Absence of a validated event is ordinary, not failure.
+  return actual.some(x=>x.binary)?45:78;
 }
-function asymmetry(f:FundamentalSnapshot,t:TechnicalSnapshot,quote:Quote){
-  const size=quote.marketCap==null?55:(quote.marketCap<300e6?55:quote.marketCap<2e9?85:quote.marketCap<10e9?72:55);
-  const g=growth(f),v=valuation(f),tech=technical(t);
-  return .30*size+.30*g+.25*v+.15*tech;
+function asymmetry(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote){
+  const size=valid(q.marketCap)?q.marketCap<300e6?38:q.marketCap<2e9?100:q.marketCap<10e9?85:q.marketCap<50e9?65:35:undefined;
+  return average([
+    {name:'Market capitalization',score:size,weight:.30,help:'A large company generally has less room for a multi-fold valuation re-rating than a smaller company.'},
+    {name:'Growth',score:growth(f),weight:.27,help:'Growth may enable business expansion and a future higher valuation.'},
+    {name:'Valuation',score:valuation(f),weight:.28,help:'Lower starting expectations can improve return asymmetry.'},
+    {name:'Price trend',score:technical(t),weight:.15,help:'Avoid relying only on a low quoted share price.'}
+  ]);
 }
-function psychology(t:TechnicalSnapshot,quote:Quote){
-  let s=75;
-  if((t.rsi14??50)>78)s-=20;
+function psychology(t:TechnicalSnapshot,q:Quote){
+  let s=100;
+  if(valid(t.rsi14)&&t.rsi14>78)s-=20;
   if(Math.abs(t.distanceSma20Atr??0)>3)s-=15;
-  if(quote.yearHigh&&quote.price/quote.yearHigh>.98&&(t.rsi14??0)>70)s-=8;
+  if(q.yearHigh&&q.price/q.yearHigh>.98&&(t.rsi14??0)>70)s-=8;
   return clamp(s);
 }
-
-export function buildScores(
-  f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:CatalystItem[],
-  dataCompleteness:number,
-  safeguards:{isOtc?:boolean; stalePrice?:boolean}={}
-){
-  const fin=financialHealth(f),qual=quality(f),gro=growth(f),val=valuation(f),share=shareholder(f),tech=technical(t),cat=catalyst(c),rsk=risk(f,q,c),asym=asymmetry(f,t,q),psy=psychology(t,q);
-  const investmentVetoes:string[]=[];
-  if(dataCompleteness<45)investmentVetoes.push('Insufficient reliable data for a high-confidence investment score.');
-  if(f.warnings.some(w=>/going concern|material weakness|restatement|auditor/i.test(w)))investmentVetoes.push('Accounting or financial-reporting concern requires caution.');
-  if((f.sharesGrowth??0)>25)investmentVetoes.push('Extreme recent share dilution.');
+function p(name:string,score:number|undefined,weight:number,help:string):Part{return {name,score,weight,help};}
+function evidenceConfidence(f:FundamentalSnapshot,complete:number):'High'|'Moderate'|'Low'{
+  const key=[f.revenueGrowth,f.epsGrowth,f.operatingMargin,f.freeCashFlowMargin,f.debtToEquity,
+    f.priceToEarnings,f.priceToSales,f.returnOnEquity,f.cash,f.returnOnInvestedCapital];
+  const count=key.filter(valid).length;
+  if(complete>=90&&count>=8&&f.latestAnnual?.date)return 'High';
+  if(complete>=70&&count>=6)return 'Moderate';
+  return 'Low';
+}
+export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:CatalystItem[],
+  dataCompleteness:number,safeguards:{isOtc?:boolean;stalePrice?:boolean}={}){
+  const fin=financialHealth(f),qual=quality(f),gro=growth(f),val=valuation(f),
+    share=shareholder(f),tech=technical(t),rsk=risk(f,q,c),asym=asymmetry(f,t,q),
+    psy=psychology(t,q),cat=verifiedCatalyst(c);
+  const confidence=evidenceConfidence(f,dataCompleteness);
+  const vetoes:string[]=[];
+  if(f.warnings.some(w=>/going concern|material weakness|restatement|auditor/i.test(w)))
+    vetoes.push('Accounting or financial-reporting concern requires independent verification.');
+  if(valid(f.sharesGrowth)&&f.sharesGrowth>25)vetoes.push('Extreme recent share dilution.');
+  const common=[
+    p('Financial health',fin,.23,'Solvency, liquid assets, debt and actual cash generation.'),
+    p('Business quality',qual,.32,'Operating margins, return on capital and profitability.'),
+    p('Growth',gro,.22,'Year-over-year sales and earnings progress.'),
+    p('Shareholder alignment',share,.13,'Repurchases, dilution and stock compensation.'),
+    p('Risk control',rsk,.10,'Documented financial, liquidity and event risks.')
+  ];
+  const business=finalize(common,vetoes,confidence);
   const core=finalize([
-    comp('Financial health',fin,.22,'Balance sheet, liquidity, leverage and cash generation.'),
-    comp('Business quality',qual,.18,'Profitability and returns on invested capital.'),
-    comp('Growth',gro,.16,'Revenue, earnings and margin growth.'),
-    comp('Valuation',val,.18,'Price relative to earnings, sales and cash flow.'),
-    comp('Shareholder alignment',share,.10,'Dilution, buyback and stock-compensation effects.'),
-    comp('Risk control',rsk,.10,'Financial, liquidity and event risk.'),
-    comp('Technical context',tech,.06,'Longer-term price trend and extension.')
-  ],investmentVetoes);
-  const growthScore=finalize([
-    comp('Growth',gro,.24,'Growth rate and durability.'),comp('Business quality',qual,.18,'Quality of the underlying company.'),
-    comp('Financial health',fin,.15,'Ability to fund growth.'),comp('Valuation',val,.15,'Price paid for expected growth.'),
-    comp('Technical context',tech,.12,'Current market confirmation.'),comp('Catalyst quality',cat,.10,'Upcoming events that can change expectations.'),
-    comp('Shareholder alignment',share,.06,'Dilution and capital allocation.')
-  ],investmentVetoes);
+    p('Financial health',fin,.15,'Liquid resources, indebtedness and available cash generation.'),
+    p('Business quality',qual,.15,'Profitability and long-run operating strength.'),
+    p('Growth',gro,.12,'Recent sales and profit changes.'),
+    p('Valuation',val,.35,'What you pay for expected earnings, sales and cash generation.'),
+    p('Shareholder alignment',share,.08,'Ownership dilution, repurchases and compensation.'),
+    p('Risk control',rsk,.10,'Risks of loss and unreliable filings.'),
+    p('Technical context',tech,.05,'Price trend and distance from recent average prices.')
+  ],vetoes,confidence);
+  const activeGrowth=finalize([
+    p('Growth',gro,.28,'Measured revenue and earnings growth.'),
+    p('Business quality',qual,.24,'Whether operating strength supports growth.'),
+    p('Financial health',fin,.12,'Ability to fund continued expansion.'),
+    p('Valuation',val,.17,'Price paid today for uncertain future growth.'),
+    p('Technical context',tech,.12,'Price trend and investor participation.'),
+    p('Shareholder alignment',share,.07,'Dilution can offset per-share growth.')
+  ],vetoes,confidence);
   const asymmetric=finalize([
-    comp('Asymmetry',asym,.30,'Upside potential relative to company size, growth, valuation and trend.'),comp('Growth',gro,.20,'Potential to expand the business.'),
-    comp('Valuation',val,.15,'Whether expectations already look expensive.'),comp('Financial health',fin,.12,'Ability to survive while the thesis develops.'),
-    comp('Catalyst quality',cat,.10,'Events that could reprice the company.'),comp('Shareholder alignment',share,.05,'Dilution and owner alignment.'),
-    comp('Psychology/crowding',psy,.03,'Chasing and crowding risk.'),comp('Risk control',rsk,.05,'Permanent-loss risk controls.')
-  ],investmentVetoes);
+    p('Asymmetry',asym,.22,'Potential for outperformance relative to company size and current expectations.'),
+    p('Growth',gro,.20,'Business expansion potential.'),
+    p('Valuation',val,.15,'Margin of safety relative to financial performance.'),
+    p('Financial health',fin,.14,'Financing and permanent-loss risk.'),
+    p('Business quality',qual,.12,'Profits and returns on capital.'),
+    p('Shareholder alignment',share,.07,'Potential share dilution and capital allocation.'),
+    p('Technical context',tech,.05,'Market participation and trend.'),
+    p('Risk control',rsk,.05,'Balance sheet, liquidity and binary-event risks.')
+  ],vetoes,confidence);
+
   const trade=buildTradePlan(q,t,c,dataCompleteness);
-  const swingVetoes:string[]=[];
-  if(dataCompleteness<45)swingVetoes.push('Insufficient reliable data for a fully qualified trade.');
-  swingVetoes.push(...trade.reasoning.filter(x=>/PASS|No clear|insufficient|illiquid|sub-\$2|downtrend/i.test(x)));
+  const turnover=(q.avgVolume??q.volume??0)*q.price;
+  const liq=(q.avgVolume??q.volume??0)>=2_000_000&&turnover>=20_000_000?100:
+    (q.avgVolume??q.volume??0)>=500_000&&turnover>=2_000_000?80:
+    (q.avgVolume??q.volume??0)>=200_000&&turnover>=500_000?55:15;
+  const swingVetoes=[...trade.reasoning.filter(x=>/^PASS:/i.test(x))];
+  const structure=trade.status==='Qualified Trade'?100:trade.status==='Watch'?70:20;
+  const reward=trade.status==='Qualified Trade'&&valid(trade.rewardRisk)
+    ?lin(trade.rewardRisk,1.5,4):0;
+  const swingConfidence=confidence==='Low'?'Low':confidence;
   let swing=finalize([
-    comp('Entry/invalidation structure',trade.status==='Qualified Trade'?92:trade.status==='Watch'?72:35,.25,'Whether risk can be defined before entry.'),
-    comp('Technical quality',tech,.20,'Trend, momentum and extension.'),
-    comp('Reward/risk',trade.rewardRisk==null?35:lin(Math.min(trade.rewardRisk,4),1,4),.15,'Potential reward compared with defined downside. Reward/risk is only counted after setup quality and execution risks are considered.'),
-    comp('Liquidity/execution',(q.avgVolume??q.volume??0)>1e6?90:(q.avgVolume??q.volume??0)>2e5?70:35,.10,'Ability to enter and exit without excessive friction.'),
-    comp('Catalyst',cat,.10,'Upcoming events that may move price.'),comp('Psychology/crowding',psy,.05,'Risk of chasing or crowding.'),
-    comp('Risk control',rsk,.05,'Event and balance-sheet risks.'),comp('Financial health',fin,.05,'Company stability.'),comp('Growth',gro,.05,'Fundamental backdrop.')
-  ],swingVetoes);
-
-  // A mathematically attractive reward/risk ratio cannot override a rejected setup.
-  // Pass setups are capped below the research-only band; Watch setups cannot become
-  // Strong/Elite until the underlying setup itself qualifies.
-  if(trade.status==='Pass' && swing.score!=null && swing.score>69.9){
+    p('Entry/invalidation structure',structure,.27,'One coherent entry condition, failure level and real price target.'),
+    p('Technical quality',tech,.24,'Observed trend, momentum and extension.'),
+    p('Reward/risk',reward,.18,'Reward to real resistance, not a made-up target.'),
+    p('Liquidity/execution',liq,.13,'Share turnover and ability to exit. Actual spreads still need verification.'),
+    p('Risk control',rsk,.10,'Dangerous dilution, reporting risk and discontinuous events.'),
+    p('Psychology/crowding',psy,.05,'Signals of chasing an extended move.'),
+    p('Catalyst evidence',cat,.03,'Confirmed events versus routine financial filings.')
+  ],swingVetoes,swingConfidence);
+  if(trade.status==='Pass'&&swing.score!=null&&swing.score>69.9)
     swing={...swing,score:69.9,band:band(69.9)};
-  }else if(trade.status==='Watch' && swing.score!=null && swing.score>89.9){
+  if(trade.status==='Watch'&&swing.score!=null&&swing.score>89.9)
     swing={...swing,score:89.9,band:band(89.9)};
-  }
-
-  // Full actionable plans require at least a 90 Swing Trade score.
-  if(trade.status==='Qualified Trade' && (swing.score==null || swing.score<90)){
+  if(trade.status==='Qualified Trade'&&(swing.score??0)<90){
     trade.status='Watch';
-    trade.reasoning.push('The setup has measurable levels, but the overall Swing Trade score is below 90, so MarketClarity will not present it as an active trade plan.');
+    trade.reasoning.push('Price levels exist, but the evidence-based Swing Trade score is below 90. The trade is not approved.');
   }
 
-  // Do not publish a numerical investment rating when most of the evidence is absent.
-  const fundamentalEvidence=[
-    f.revenueGrowth, f.epsGrowth, f.operatingMargin, f.freeCashFlowMargin,
-    f.debtToEquity, f.currentRatio, f.priceToEarnings, f.priceToSales,
-    f.returnOnEquity, f.cash
-  ].filter(v=>v!=null && Number.isFinite(v)).length;
-  const annualAgeDays=f.latestAnnual?.date
-    ?(Date.now()-Date.parse(f.latestAnnual.date))/(86400000)
-    :undefined;
-  const evidenceInsufficient=dataCompleteness<55||fundamentalEvidence<4||
-    (annualAgeDays!=null&&annualAgeDays>540);
-  const unrate=(model:ModelScore,reason:string):ModelScore=>({
-    ...model,score:null,band:'Not Rated',
-    vetoes:[...model.vetoes,reason]
-  });
-  const reason='Not enough reliable, recent company financial information to calculate a trustworthy numerical investment rating.';
-  const coreFinal=evidenceInsufficient?unrate(core,reason):core;
-  const growthFinal=evidenceInsufficient?unrate(growthScore,reason):growthScore;
-  const asymmetricFinal=evidenceInsufficient?unrate(asymmetric,reason):asymmetric;
-
-  // Very thin / stale trading data should not receive a fabricated trading grade.
-  const quoteUnreliable=safeguards.stalePrice||q.price<0.01||
-    ((q.avgVolume??q.volume??0)*q.price<50000);
-  const swingFinal=quoteUnreliable
-    ?unrate(swing,'Price data are stale, sub-penny, or too thinly traded for a reliable executable swing-trade rating.')
-    :swing;
-
-  if(swingFinal.score===null){
+  const fundamentalEvidence=[f.revenueGrowth,f.epsGrowth,f.operatingMargin,f.freeCashFlowMargin,
+    f.debtToEquity,f.currentRatio,f.priceToEarnings,f.priceToSales,f.returnOnEquity,f.cash].filter(valid).length;
+  const annualAge=f.latestAnnual?.date?(Date.now()-Date.parse(f.latestAnnual.date))/86400000:Infinity;
+  const missingCore=dataCompleteness<55||fundamentalEvidence<4||annualAge>540;
+  function unrated(s:ModelScore,why:string):ModelScore{
+    return {...s,score:null,band:'Not Rated',confidence:'Low',vetoes:[...s.vetoes,why]};
+  }
+  const why='Recent reliable company financial reports are insufficient for a numerical investment evaluation.';
+  const poorQuote=safeguards.stalePrice||q.price<.01||turnover<50_000||
+    !valid(t.atr14)||!valid(t.sma50)||!valid(t.rsi14);
+  if(poorQuote){
+    swing=unrated(swing,'Stale or insufficient tradable price, liquidity, or technical history.');
     trade.status='Pass';
-    trade.reasoning.push('No actionable trade plan: reliable price discovery and execution data are insufficient.');
-    delete trade.preferredEntryLow;
-    delete trade.preferredEntryHigh;
-    delete trade.confirmationAbove;
-    delete trade.invalidationBelow;
-    delete trade.target1;
-    delete trade.target2;
-    delete trade.stretchTarget;
-    delete trade.rewardRisk;
+    trade.reasoning.push('No actionable plan while price history or execution data are inadequate.');
+    delete trade.preferredEntryLow;delete trade.preferredEntryHigh;
+    delete trade.confirmationAbove;delete trade.invalidationBelow;
+    delete trade.target1;delete trade.target2;delete trade.stretchTarget;delete trade.rewardRisk;
   }
-
-  return {core:coreFinal,growth:growthFinal,asymmetric:asymmetricFinal,swing:swingFinal,tradePlan:trade};
+  return {
+    business:missingCore?unrated(business,why):business,
+    core:missingCore?unrated(core,why):core,
+    growth:missingCore?unrated(activeGrowth,why):activeGrowth,
+    asymmetric:missingCore?unrated(asymmetric,why):asymmetric,
+    swing,tradePlan:trade
+  };
 }
 
 function roundStockPrice(n:number):number{
