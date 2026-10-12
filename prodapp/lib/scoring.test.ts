@@ -45,3 +45,37 @@ describe('OTC and data-quality safeguards',()=>{
     expect(result.core.band).not.toBe('Not Rated');
   });
 });
+
+describe('honest conditional trading plans',()=>{
+  const q:Quote={symbol:'EXAMPLE',price:100,avgVolume:2_000_000,volume:2_100_000,timestamp:'2026-10-09'};
+  const t:TechnicalSnapshot={
+    trend:'strong-up',rsi14:55,atr14:2,sma20:98,sma50:96,sma200:88,
+    support:96,resistance:118,relativeVolume:1.2,distanceSma20Atr:1
+  };
+  it('shows one conditional pullback plan with a historical resistance target, not a manufactured 2R exit',()=>{
+    const plan=buildTradePlan(q,t,[],95);
+    expect(plan.status).toBe('Qualified Trade');
+    expect(plan.target1).toBe(118);
+    expect(plan.target2).toBeUndefined();
+    expect(plan.preferredEntryLow!).toBeLessThan(plan.preferredEntryHigh!);
+    expect(plan.confirmationAbove).toBe(plan.preferredEntryHigh);
+    expect(plan.invalidationBelow!).toBeLessThan(plan.preferredEntryLow!);
+    expect(plan.rewardRisk!).toBeGreaterThanOrEqual(2);
+    const risk=plan.preferredEntryHigh!-plan.invalidationBelow!;
+    const measured=(plan.target1!-plan.preferredEntryHigh!)/risk;
+    expect(measured).toBeCloseTo(plan.rewardRisk!,1);
+  });
+  it('rejects a pretty setup when the observed resistance is too close instead of pushing the target out',()=>{
+    const plan=buildTradePlan(q,{...t,resistance:101},[],95);
+    expect(plan.status).toBe('Pass');
+    expect(plan.target1).toBe(101);
+    expect(plan.reasoning.join(' ')).toMatch(/No target was invented/i);
+  });
+  it('does not qualify otherwise favorable price structure with a nearby binary event',()=>{
+    const plan=buildTradePlan(q,t,[{
+      type:'binary',title:'One-time regulatory decision',
+      date:new Date(Date.now()+6*86400000).toISOString(),binary:true
+    }],95);
+    expect(plan.status).toBe('Watch');
+  });
+});
