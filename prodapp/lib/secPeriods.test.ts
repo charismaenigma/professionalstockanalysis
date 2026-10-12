@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, yearToDateAt} from './secPeriods';
+import {matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, trailingFromFiscalYtd, yearToDateAt} from './secPeriods';
 
 type F={form:'10-Q'|'10-K';start:string;end:string;val:number;filed:string};
 function f(form:F['form'],start:string,end:string,val:number,filed='2026-08-03'):F{
@@ -37,6 +37,15 @@ describe('SEC filing fiscal-year alignment',()=>{
    expect(trailingTwelveMonths(eps)).toBeCloseTo(8.70,2);
    expect(336.64/trailingTwelveMonths(eps)!).toBeCloseTo(38.69,1);
    expect(336.64/7.47).toBeGreaterThan(45);
+ });
+ it('reconstructs latest trailing revenue rather than stale fiscal-year sales',()=>{
+   expect(trailingFromFiscalYtd(revenue,'2026-06-27','2025-06-28'))
+     .toBe(416_161+345_000-313_695);
+ });
+ it('does not invent cash flow multiples when recent SEC cash flow data are missing',()=>{
+   expect(trailingFromFiscalYtd(
+     [f('10-K','2024-09-29','2025-09-27',100)],
+     '2026-06-27','2025-06-28')).toBeUndefined();
  });
  it('uses comparable fiscal year-to-date reported figures',()=>{
    expect(yearToDateAt(revenue,'2026-06-27')?.val).toBe(345_000);
