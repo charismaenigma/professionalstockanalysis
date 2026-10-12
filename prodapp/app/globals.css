@@ -35,6 +35,25 @@ button,input{font:inherit}
 .search button:disabled,.secondary:disabled,.actions button:disabled{opacity:.55;cursor:wait}
 .quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .quick button{border:1px solid var(--line);background:#0a1726;color:#cfe1f2;border-radius:999px;padding:7px 10px;cursor:pointer}
+.searchLabel{display:block;margin-top:24px;color:var(--text);font-weight:750}
+.searchLabel+.search{margin-top:8px}
+.companyChoices{margin-top:24px}
+.companyChoices h2{font-size:14px;color:var(--muted);font-weight:600;margin:0 0 10px}
+.companyQuick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0}
+.companyQuick button{display:flex;flex-direction:column;align-items:flex-start;border-radius:11px;padding:11px 13px;text-align:left}
+.companyQuick button b{font-size:15px;color:var(--text)}
+.companyQuick button span{font-size:12px;color:var(--muted)}
+.companyQuick button:hover:not(:disabled){border-color:var(--blue);background:#132d45}
+.companyQuick button:disabled{opacity:.55;cursor:wait}
+.search input:focus-visible,.search button:focus-visible,.companyQuick button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+.landingOverview h2{font-size:26px;letter-spacing:-.02em;margin:6px 0 8px}
+.perspectiveGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0}
+.perspectiveGrid article{background:#0a1726;border:1px solid var(--line);border-radius:12px;padding:17px}
+.perspectiveGrid h3{font-size:16px;margin:0 0 8px}
+.perspectiveGrid p{font-size:13px;color:var(--muted);margin:0}
+.analysisLoading p{color:var(--muted);margin:5px 0 0}
+@media(max-width:1000px){.perspectiveGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.companyQuick{grid-template-columns:repeat(2,minmax(0,1fr))}.perspectiveGrid{grid-template-columns:1fr}}
 .identity{display:flex;justify-content:space-between;align-items:end;gap:20px;padding:28px 2px 12px}
 .identity h2{margin:4px 0;font-size:32px}
 .price{font-size:36px;font-weight:900;text-align:right}
