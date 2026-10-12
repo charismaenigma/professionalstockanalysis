@@ -63,3 +63,14 @@ export function trailingFromFiscalYtd<T extends PeriodFact>(
  if(!currentYtd||!priorYtd||!Number.isFinite(currentYtd.val)||!Number.isFinite(priorYtd.val))return undefined;
  return yearly.val+currentYtd.val-priorYtd.val;
 }
+
+/** Sum separate current/noncurrent term debt and short borrowings without
+ * adding a duplicated aggregate debt disclosure on top of the components. */
+export function combineDebtBalances(
+  current?:number,noncurrent?:number,reportedTotal?:number,shortBorrowings?:number
+):number|undefined{
+  const pieces=current!=null&&noncurrent!=null ? current+noncurrent
+    :reportedTotal??noncurrent??current;
+  return pieces!=null||shortBorrowings!=null
+    ?(pieces??0)+(shortBorrowings??0):undefined;
+}
