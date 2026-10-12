@@ -202,6 +202,17 @@ export function qualifyRadarLead(lead:RadarLead,result:RadarRatingSnapshot):Rada
   if(result.symbol!==lead.symbol)return null;
   if(result.marketClassification==='OTC')return null;
   if(result.quote.price<2||result.priceDataAgeDays==null||result.priceDataAgeDays>5)return null;
+  // Real market capacity matters more than a pretty percentage chart.
+  if((result.quote.avgVolume??0)<200000 ||
+    (result.quote.avgVolume??0)*result.quote.price<1000000)return null;
+  // A stock with serious reliability flags is not a featured research lead,
+  // even if the mechanical score happens to cross 80.
+  const disclosures=[
+    ...result.scores.core.vetoes,
+    ...result.scores.growth.vetoes,
+    ...result.scores.asymmetric.vetoes
+  ];
+  if(disclosures.some(x=>/going concern|material weakness|accounting or financial-reporting concern|extreme recent share dilution/i.test(x)))return null;
   // Must be based on the same trading session as the Radar data; stale
   // ratings would be even more misleading than an activity-only screen.
   if(result.quote.timestamp==null)return null;
