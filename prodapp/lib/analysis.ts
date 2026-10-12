@@ -1,6 +1,9 @@
 import type { AnalysisResult, BenchmarkResult, CatalystItem, FundamentalSnapshot, OptionContract } from './types';
-import { fmpBars, fmpCatalysts, fmpFundamentals, fmpQuote } from './providers/fmp';
+import { fmpCatalysts } from './providers/fmp';
 import { massiveOptions } from './providers/massive';
+import { massiveStockBars, quoteFromBars } from './providers/massiveStocks';
+import { secFundamentals } from './secFundamentals';
+import { recentSecFilings } from './sec';
 import { technicalSnapshot } from './indicators';
 import { buildScores } from './scoring';
 import { demoBars, demoCatalysts, demoFundamentals, demoQuote, demoSymbols } from './demo';
@@ -19,9 +22,10 @@ function timing(t:ReturnType<typeof technicalSnapshot>){
   return Math.max(0,Math.min(100,Math.round(s*10)/10));
 }
 
-async function benchmark(symbol:'VTI'|'VOO',live:boolean):Promise<BenchmarkResult>{
-  const [q,b]=live?await Promise.all([fmpQuote(symbol),fmpBars(symbol)]):[demoQuote(symbol),demoBars(symbol)];
-  const t=technicalSnapshot(b);
+async function benchmark(symbol:'VTI'|'VOO',marketMode:boolean):Promise<BenchmarkResult>{
+  const bars=marketMode?await massiveStockBars(symbol):demoBars(symbol);
+  const q=marketMode?quoteFromBars(symbol,bars,symbol):demoQuote(symbol);
+  const t=technicalSnapshot(bars);
   const score=timing(t);
   return {
     symbol,
@@ -72,40 +76,60 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
 export async function analyzeSymbol(input:string):Promise<AnalysisResult>{
   const symbol=input.trim().toUpperCase().replace(/[^A-Z0-9.^-]/g,'').slice(0,12);
   if(!symbol)throw new Error('Enter a valid ticker symbol.');
-  const live=Boolean(process.env.FMP_API_KEY);
+
+  const hasMassive=Boolean(process.env.MASSIVE_API_KEY);
 
   let quote;
   let bars;
   let fundamentals;
   let companyName=symbol;
   let catalysts:CatalystItem[]=[];
+  let cik:string|undefined;
 
-  if(live){
-    const [q,b,fu,ca]=await Promise.all([fmpQuote(symbol),fmpBars(symbol),fmpFundamentals(symbol),fmpCatalysts(symbol)]);
-    quote=q; bars=b; fundamentals=fu.snapshot; companyName=fu.companyName||q.name||symbol; catalysts=ca;
+  if(hasMassive){
+    bars=await massiveStockBars(symbol);
+    quote=quoteFromBars(symbol,bars,symbol);
+
+    const sec=await secFundamentals(symbol,quote.price);
+    fundamentals=sec.snapshot;
+    companyName=sec.companyName||symbol;
+    cik=sec.cik;
+
+    const [filings,fmpEvents]=await Promise.all([
+      recentSecFilings(cik).catch(()=>[]),
+      process.env.FMP_API_KEY ? fmpCatalysts(symbol).catch(()=>[]) : Promise.resolve([])
+    ]);
+    catalysts=[...filings,...fmpEvents].slice(0,16);
   }else{
     const use=demoSymbols.includes(symbol)?symbol:'RSKD';
-    quote=demoQuote(use); bars=demoBars(use); fundamentals=demoFundamentals(use); catalysts=demoCatalysts(use); companyName=quote.name||use; quote={...quote,symbol:use};
+    quote=demoQuote(use);
+    bars=demoBars(use);
+    fundamentals=demoFundamentals(use);
+    catalysts=demoCatalysts(use);
+    companyName=quote.name||use;
+    quote={...quote,symbol:use};
   }
 
   const technicals=technicalSnapshot(bars);
   const dataCompleteness=completeness(fundamentals,bars.length);
   const built=buildScores(fundamentals,technicals,quote,catalysts,dataCompleteness);
-  const benchmarks=await Promise.all([benchmark('VTI',live),benchmark('VOO',live)]);
+  const benchmarks=await Promise.all([benchmark('VTI',hasMassive),benchmark('VOO',hasMassive)]);
+
   let options:OptionContract[]=[];
-  if(live&&process.env.MASSIVE_API_KEY)options=optionShortlist(await massiveOptions(symbol).catch(()=>[]),quote.price);
+  if(hasMassive)options=optionShortlist(await massiveOptions(symbol).catch(()=>[]),quote.price);
 
   const copy=language(companyName,fundamentals,technicals,built,benchmarks);
   const warnings:string[]=[];
-  if(!live)warnings.push('Demo mode uses illustrative data. Add FMP_API_KEY to enable current market and fundamental data.');
-  if(live&&!process.env.MASSIVE_API_KEY)warnings.push('Options data is disabled until MASSIVE_API_KEY is configured.');
+  if(!hasMassive)warnings.push('Demo mode is active. Add MASSIVE_API_KEY to enable end-of-day market data and SEC-based fundamentals.');
+  if(hasMassive)warnings.push('Market prices are end-of-day on the free Massive Stocks plan, not real-time quotes.');
+  if(hasMassive&&dataCompleteness<60)warnings.push('Some fundamental fields were not available from SEC XBRL facts, so the model reduced confidence rather than inventing values.');
   if(!process.env.OPENAI_API_KEY)warnings.push('Optional AI research summaries are disabled until OPENAI_API_KEY is configured.');
 
   return {
     symbol:quote.symbol,
     companyName,
-    mode:live?'live':'demo',
-    dataProvider:live?'Financial Modeling Prep + optional Massive':'Illustrative demo data',
+    mode:hasMassive?'live':'demo',
+    dataProvider:hasMassive?'Massive end-of-day market data + SEC company facts':'Illustrative demo data',
     asOf:new Date().toISOString(),
     quote,
     fundamentals,
