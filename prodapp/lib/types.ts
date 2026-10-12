@@ -170,6 +170,19 @@ export interface BenchmarkResult {
 }
 
 export interface AnalysisResult {
+  instrumentType?: 'Stock' | 'ETF';
+  fundProfile?: {
+    tracks:string;
+    portfolioDescription:string;
+    expenseRatioPct:number;
+    expenseAsOf:string;
+    approximateHoldings:number;
+    holdingsAsOf:string;
+    sourceUrl:string;
+    concentrationNote:string;
+  };
+  fundTiming?: number;
+  fundTimingExplanation?: string;
   marketClassification?: 'OTC' | 'Listed' | 'Unknown';
   priceDataAgeDays?: number;
   assessmentWarnings?: string[];
