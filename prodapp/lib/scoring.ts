@@ -131,7 +131,10 @@ function evidenceConfidence(f:FundamentalSnapshot,complete:number):'High'|'Moder
   const key=[f.revenueGrowth,f.epsGrowth,f.operatingMargin,f.freeCashFlowMargin,f.debtToEquity,
     f.priceToEarnings,f.priceToSales,f.returnOnEquity,f.cash,f.returnOnInvestedCapital];
   const count=key.filter(valid).length;
-  if(complete>=90&&count>=8&&f.latestAnnual?.date)return 'High';
+  // Elite evidence requires actual invested-capital returns and cash-flow
+  // valuation. Otherwise exceptional averages can hide a missing pillar.
+  if(complete>=90&&count>=8&&f.latestAnnual?.date &&
+     valid(f.returnOnInvestedCapital)&&valid(f.priceToFreeCashFlow))return 'High';
   if(complete>=70&&count>=6)return 'Moderate';
   return 'Low';
 }
