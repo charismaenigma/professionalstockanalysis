@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, trailingFromFiscalYtd, yearToDateAt} from './secPeriods';
+import {matchedYearAgoQuarter, singleQuarterAt, trailingTwelveMonths, trailingFromFiscalYtd, combineDebtBalances, yearToDateAt} from './secPeriods';
 
 type F={form:'10-Q'|'10-K';start:string;end:string;val:number;filed:string};
 function f(form:F['form'],start:string,end:string,val:number,filed='2026-08-03'):F{
@@ -53,5 +53,18 @@ describe('SEC filing fiscal-year alignment',()=>{
  });
  it('does not guess the trailing EPS when required year-ago earnings are unavailable',()=>{
    expect(trailingTwelveMonths(eps.filter(x=>x.end!=='2025-06-28'))).toBeUndefined();
+ });
+});
+
+describe('interest-bearing debt balance reconciliation',()=>{
+ it('counts current term debt, noncurrent term debt and commercial paper exactly once',()=>{
+   // Apple June 2026 filing (USD millions): $11,007 + $71,340 + $1,997.
+   expect(combineDebtBalances(11007,71340,82347,1997)).toBe(84344);
+ });
+ it('uses an aggregate term debt amount only when complete components are absent',()=>{
+   expect(combineDebtBalances(undefined,71340,82347,1997)).toBe(84344);
+ });
+ it('does not invent zero debt when the issuer did not report any borrowing facts',()=>{
+   expect(combineDebtBalances()).toBeUndefined();
  });
 });
