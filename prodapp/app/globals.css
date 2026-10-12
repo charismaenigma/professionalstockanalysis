@@ -49,6 +49,7 @@ button,input{font:inherit}
 .elite{color:var(--green)}
 .strong{color:var(--cyan)}
 .watch{color:var(--amber)}
+.researchOnly{color:#b7cbe3}
 .pass{color:var(--red)}
 details{margin-top:10px}
 summary{cursor:pointer;color:#cfe4f8}
