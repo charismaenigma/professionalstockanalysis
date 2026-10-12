@@ -41,7 +41,7 @@ export function quoteFromBars(symbol:string,bars:Bar[],name?:string):Quote{
 
 /** Market identifier is sourced from Massive reference metadata, not inferred
  * from the ticker's price. OTC disclosure tiers require separate licensing. */
-export async function massiveMarketClassification(symbol:string):Promise<{market:'OTC'|'Listed'|'Unknown';name?:string}>{
+export async function massiveMarketClassification(symbol:string):Promise<{market:'OTC'|'Listed'|'Unknown';name?:string;isEtf?:boolean}>{
   const url=new URL(`${BASE}/v3/reference/tickers`);
   url.searchParams.set('ticker',symbol);
   url.searchParams.set('limit','10');
@@ -53,5 +53,5 @@ export async function massiveMarketClassification(symbol:string):Promise<{market
   if(!item)return {market:'Unknown'};
   const code=String(item.market??'').toLowerCase();
   const market=code==='otc'?'OTC':code==='stocks'?'Listed':'Unknown';
-  return {market,name:item.name?String(item.name):undefined};
+  return {market,name:item.name?String(item.name):undefined,isEtf:String(item.type??'').toUpperCase()==='ETF'};
 }
