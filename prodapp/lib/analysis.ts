@@ -61,8 +61,8 @@ function language(company:string,f:FundamentalSnapshot,t:ReturnType<typeof techn
   if((t.rsi14??0)>75)concerns.push('Recent upward momentum is unusually strong, so the current price may be extended.');
   if(dataCompleteness<45)concerns.push('Fundamental data is incomplete, so long-term conclusions have low confidence.');
   concerns.push(...f.warnings.slice(0,2));
-  if(scores.core.score<95)improve.push('A more attractive valuation could improve the long-term score.');
-  if(scores.swing.score<95)improve.push('A clearer technical setup could improve the swing score.');
+  if((scores.core.score??0)<95)improve.push('A more attractive valuation could improve the long-term score.');
+  if((scores.swing.score??0)<95)improve.push('A clearer technical setup could improve the swing score.');
   if((f.revenueGrowth??0)<15)improve.push('Faster or more consistent growth could improve the growth score.');
   if((t.rsi14??50)>70)psychology.push('FOMO check: avoid making a decision only because the price has risen quickly.');
   if(best>=90)psychology.push('Confirmation-bias check: compare supportive and contradictory evidence before acting.');
