@@ -38,3 +38,20 @@ export function quoteFromBars(symbol:string,bars:Bar[],name?:string):Quote{
     timestamp:last.date
   };
 }
+
+/** Market identifier is sourced from Massive reference metadata, not inferred
+ * from the ticker's price. OTC disclosure tiers require separate licensing. */
+export async function massiveMarketClassification(symbol:string):Promise<{market:'OTC'|'Listed'|'Unknown';name?:string}>{
+  const url=new URL(`${BASE}/v3/reference/tickers`);
+  url.searchParams.set('ticker',symbol);
+  url.searchParams.set('limit','10');
+  url.searchParams.set('apiKey',key());
+  const response=await fetch(url,{next:{revalidate:21600}});
+  if(!response.ok)return {market:'Unknown'};
+  const json:any=await response.json();
+  const item=(json.results??[]).find((r:any)=>String(r.ticker||'').toUpperCase()===symbol.toUpperCase());
+  if(!item)return {market:'Unknown'};
+  const code=String(item.market??'').toLowerCase();
+  const market=code==='otc'?'OTC':code==='stocks'?'Listed':'Unknown';
+  return {market,name:item.name?String(item.name):undefined};
+}
