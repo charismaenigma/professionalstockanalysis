@@ -59,10 +59,11 @@ export function researchAlternatives(symbol:string,trend:TechnicalSnapshot['tren
 export function leveragedContext(f:LeveragedFund,technical:TechnicalSnapshot,quote:Quote){
  const weak=technical.trend==='down'||technical.trend==='strong-down';
  const strong=technical.trend==='up'||technical.trend==='strong-up';
- const supports= f.direction==='Bull'?strong:weak;
- const opposes=f.direction==='Bull'?weak:strong;
+ // Interpret the trend of THIS FUND, not the assumed direction of the index.
+ const supports=strong;
+ const opposes=weak;
  return {
-  headline:opposes?'Prior-day conditions conflict with the fund direction':supports?'Prior-day trend broadly aligns with the fund direction':'Prior-day trend provides no clear directional confirmation',
+  headline:opposes?'This fund’s recent price trend is weak':supports?'This fund’s recent price trend is constructive':'This fund has no clear trend confirmation',
   summary:`${f.symbol} targets ${f.dailyMultiple>0?'+':''}${f.dailyMultiple}x the DAILY return of the ${f.index}, before fees and expenses. The price trend of this ETF is ${technical.trend.replace('-',' ')}. This is end-of-day context only: there is no verified intraday entry, stop or target. Price: ${quote.price.toFixed(2)} at the last available close.`,
   status:opposes?'Caution':supports?'Research Only':'No Clear Edge'
  };
