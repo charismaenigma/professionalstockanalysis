@@ -180,3 +180,9 @@ h3{font-size:22px;margin:5px 0 12px}
  .radarActions{flex-direction:column;align-items:stretch}
  .radarActions a{text-align:center}
 }
+
+/* Differentiates a 90-94.9 conditional plan from a 95+ elite setup. */
+.tradeCaution,.tradeQualified{padding:13px 15px;border-radius:12px;margin:12px 0 16px}
+.tradeCaution{background:#261f12;border:1px solid #80612b;color:#ffe5a5}
+.tradeQualified{background:#112820;border:1px solid #317757;color:#baf1d1}
+.tradeCaution p,.tradeQualified p{margin:7px 0 0;font-size:13px;line-height:1.6}
