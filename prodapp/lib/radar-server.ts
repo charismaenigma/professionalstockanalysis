@@ -176,4 +176,4 @@ async function buildRadar():Promise<RadarReport>{
 // repeatedly consuming the free provider's market-data quota per visitor.
 // A durable all-market daily verification process will need additional
 // infrastructure and the proper data license.
-export const getRadar=unstable_cache(buildRadar,['marketclarity-daily-radar-verified-v2'],{revalidate:21600});
+export const getRadar=unstable_cache(buildRadar,['marketclarity-daily-radar-scoring-v2'],{revalidate:21600});
