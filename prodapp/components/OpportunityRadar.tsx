@@ -19,8 +19,9 @@ function GradeCard({lead}:{lead:RadarLead}){
     </div>
     <div className={v.featuredScore>=95?'radarVerdict elite':v.featuredScore>=90?'radarVerdict strong':'radarVerdict watch'}>{v.verdict}{swingApproved?' · Conditional swing plan available':' · Research first'}</div>
     <p className="radarExplanation">{v.explanation}</p>
+    <div className="radarBusinessLabel"><span>Company strength (excludes share price)</span><strong>{scoreText(v.business??null)}</strong></div>
     <div className="radarModelScores">
-      <div><span>Core investment</span><strong>{scoreText(v.core)}</strong></div>
+      <div><span>Investment at price</span><strong>{scoreText(v.core)}</strong></div>
       <div><span>Active growth</span><strong>{scoreText(v.growth)}</strong></div>
       <div><span>Asymmetric</span><strong>{scoreText(v.asymmetric)}</strong></div>
       <div><span>Swing trade</span><strong>{scoreText(v.swing)}</strong></div>
