@@ -84,7 +84,11 @@ function psychology(t:TechnicalSnapshot,quote:Quote){
   return clamp(s);
 }
 
-export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:CatalystItem[],dataCompleteness:number){
+export function buildScores(
+  f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:CatalystItem[],
+  dataCompleteness:number,
+  safeguards:{isOtc?:boolean; stalePrice?:boolean}={}
+){
   const fin=financialHealth(f),qual=quality(f),gro=growth(f),val=valuation(f),share=shareholder(f),tech=technical(t),cat=catalyst(c),rsk=risk(f,q,c),asym=asymmetry(f,t,q),psy=psychology(t,q);
   const investmentVetoes:string[]=[];
   if(dataCompleteness<45)investmentVetoes.push('Insufficient reliable data for a high-confidence investment score.');
@@ -139,7 +143,47 @@ export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:
     trade.reasoning.push('The setup has measurable levels, but the overall Swing Trade score is below 90, so MarketClarity will not present it as an active trade plan.');
   }
 
-  return {core,growth:growthScore,asymmetric,swing,tradePlan:trade};
+  // Do not publish a numerical investment rating when most of the evidence is absent.
+  const fundamentalEvidence=[
+    f.revenueGrowth, f.epsGrowth, f.operatingMargin, f.freeCashFlowMargin,
+    f.debtToEquity, f.currentRatio, f.priceToEarnings, f.priceToSales,
+    f.returnOnEquity, f.cash
+  ].filter(v=>v!=null && Number.isFinite(v)).length;
+  const annualAgeDays=f.latestAnnual?.date
+    ?(Date.now()-Date.parse(f.latestAnnual.date))/(86400000)
+    :undefined;
+  const evidenceInsufficient=dataCompleteness<55||fundamentalEvidence<4||
+    (annualAgeDays!=null&&annualAgeDays>540);
+  const unrate=(model:ModelScore,reason:string):ModelScore=>({
+    ...model,score:null,band:'Not Rated',
+    vetoes:[...model.vetoes,reason]
+  });
+  const reason='Not enough reliable, recent company financial information to calculate a trustworthy numerical investment rating.';
+  const coreFinal=evidenceInsufficient?unrate(core,reason):core;
+  const growthFinal=evidenceInsufficient?unrate(growthScore,reason):growthScore;
+  const asymmetricFinal=evidenceInsufficient?unrate(asymmetric,reason):asymmetric;
+
+  // Very thin / stale trading data should not receive a fabricated trading grade.
+  const quoteUnreliable=safeguards.stalePrice||q.price<0.01||
+    ((q.avgVolume??q.volume??0)*q.price<50000);
+  const swingFinal=quoteUnreliable
+    ?unrate(swing,'Price data are stale, sub-penny, or too thinly traded for a reliable executable swing-trade rating.')
+    :swing;
+
+  if(swingFinal.score===null){
+    trade.status='Pass';
+    trade.reasoning.push('No actionable trade plan: reliable price discovery and execution data are insufficient.');
+    delete trade.preferredEntryLow;
+    delete trade.preferredEntryHigh;
+    delete trade.confirmationAbove;
+    delete trade.invalidationBelow;
+    delete trade.target1;
+    delete trade.target2;
+    delete trade.stretchTarget;
+    delete trade.rewardRisk;
+  }
+
+  return {core:coreFinal,growth:growthFinal,asymmetric:asymmetricFinal,swing:swingFinal,tradePlan:trade};
 }
 
 export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],dataCompleteness=100):TradePlan{
@@ -172,6 +216,8 @@ export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],data
   const illiquid=volume>0&&volume<200000;
 
   const reasons:string[]=[];
+  if(p<0.01)reasons.push('PASS: Sub-penny prices need more precision and reliable bid/ask liquidity before an executable setup can be established.');
+  if(volume*p<50000)reasons.push('PASS: Average daily dollar turnover is too low for a dependable entry and exit plan.');
   if(rr<2)reasons.push('PASS: Reward/risk is below 2:1.');
   if(illiquid)reasons.push('PASS: Trading volume is too low for the standard swing-trade model; execution and spreads may be unreliable.');
   if(dataCompleteness<45)reasons.push('Insufficient fundamental data for a fully qualified trade; treat the setup as lower confidence.');
@@ -182,7 +228,7 @@ export function buildTradePlan(q:Quote,t:TechnicalSnapshot,c:CatalystItem[],data
   if(extended)reasons.push('Price is extended well above its short-term average; chasing risk is elevated.');
 
   let status:TradePlan['status']='Qualified Trade';
-  if(rr<2||illiquid||(subTwo&&downtrend)||oversoldDowntrend)status='Pass';
+  if(rr<2||illiquid||(subTwo&&downtrend)||oversoldDowntrend||p<0.01||volume*p<50000)status='Pass';
   else if(dataCompleteness<45||subTwo||downtrend||binarySoon||extended)status='Watch';
 
   if(status==='Qualified Trade'){
