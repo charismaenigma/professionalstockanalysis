@@ -32,7 +32,7 @@ function ScoreCard({title,m}:{title:string;m:ModelScore}){
        :title==='Swing Trade'
          ?'Research of a potential price setup, not a live trade signal or a probability of profit.'
          :'Price-sensitive research rating, not a measure of company quality alone or a prediction of returns.'}
-       {' · '}{m.confidence??'Unverified'} evidence confidence · Research model not yet historically calibrated.
+       {' · '}{m.confidence??'Unverified'} input coverage (not a measure of accuracy or odds of success) · Research model not yet historically calibrated.
      </p>}
    {m.score==null
      ?<div className="veto"><b>Insufficient verified evidence</b>{m.vetoes.map(v=><p key={v}>{v}</p>)}<p>We won't invent a score when key data cannot be verified.</p></div>
