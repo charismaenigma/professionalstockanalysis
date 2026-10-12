@@ -50,6 +50,11 @@ export interface RadarReport {
   rejected:number;
   verifiedElite:null;
   verifiedStrong:null;
+  marketPulse?:{
+    eligibleCount:number;advancing:number;declining:number;flat:number;
+    percentageAdvancing:number;
+    indexes:{symbol:'VTI'|'VOO';close:number;dayChangePercent:number}[];
+  };
   review?:{
     reviewed:number;
     proposed:number;
@@ -152,8 +157,27 @@ export function screenDailyRadar(current:DailyBar[],previous:DailyBar[],reportDa
       .sort((a,b)=>b.priority-a.priority||b.dollarVolume-a.dollarVolume||a.symbol.localeCompare(b.symbol))
       .slice(0,10);
   }
+  const eligibleRows=current.filter(b=>{
+    const p=old.get(b.symbol);
+    return !!p && !b.otc && b.close>=2 && b.close*b.volume>=1_000_000
+      && b.volume>=200_000 && p.close>0 && /^[A-Z]{1,5}$/.test(b.symbol);
+  });
+  const advancing=eligibleRows.filter(b=>b.close>old.get(b.symbol)!.close).length;
+  const declining=eligibleRows.filter(b=>b.close<old.get(b.symbol)!.close).length;
+  const indexes=(['VTI','VOO'] as const).flatMap(symbol=>{
+    const today=current.find(b=>b.symbol===symbol);
+    const yesterday=old.get(symbol);
+    return today&&yesterday&&yesterday.close>0
+      ?[{symbol,close:today.close,dayChangePercent:round((today.close/yesterday.close-1)*100,2)}]
+      :[];
+  });
   return {
     status:'ok',reportDate,comparisonDate,generatedAt:new Date().toISOString(),
+    marketPulse:{
+      eligibleCount:eligibleRows.length,advancing,declining,flat:eligibleRows.length-advancing-declining,
+      percentageAdvancing:eligibleRows.length?round(advancing/eligibleRows.length*100,1):0,
+      indexes
+    },
     source:'Massive Stocks Basic: end-of-day grouped aggregates',
     scanned:current.length,eligible,rejected:current.length-eligible,
     verifiedElite:null,verifiedStrong:null,
