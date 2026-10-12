@@ -193,7 +193,16 @@ export function buildScores(f:FundamentalSnapshot,t:TechnicalSnapshot,q:Quote,c:
   const structure=trade.status==='Qualified Trade'?100:trade.status==='Watch'?70:20;
   const reward=trade.status==='Qualified Trade'&&valid(trade.rewardRisk)
     ?lin(trade.rewardRisk,1.5,4):0;
-  const swingConfidence=confidence==='Low'?'Low':confidence;
+  // A technically valid swing setup need not have positive earnings or a
+  // calculable P/E. Its confidence rests primarily on current/liquid chart
+  // evidence, with basic financial transparency used as an additional guard.
+  const tradeHistoryComplete=valid(t.sma200)&&valid(t.sma50)&&valid(t.atr14)
+    &&valid(t.rsi14)&&valid(t.support)&&valid(t.resistance);
+  const tradeLiquidity=(q.avgVolume??q.volume??0)>=500_000 && turnover>=2_000_000;
+  const swingConfidence:'High'|'Moderate'|'Low'=
+    safeguards.stalePrice||!tradeHistoryComplete||turnover<500_000?'Low':
+    dataCompleteness>=65&&tradeLiquidity?'High':
+    dataCompleteness>=45?'Moderate':'Low';
   let swing=finalize([
     p('Entry/invalidation structure',structure,.27,'One coherent entry condition, failure level and real price target.'),
     p('Technical quality',tech,.24,'Observed trend, momentum and extension.'),
