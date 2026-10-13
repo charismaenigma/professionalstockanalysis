@@ -1,7 +1,7 @@
 import 'server-only';
 import Stripe from 'stripe';
 import { clerkClient } from '@clerk/nextjs/server';
-import { billingConfigured, membershipPriceIds } from './membership-config';
+import { billingConfigured, membershipPriceIds, liveStripeKey } from './membership-config';
 import { subscriptionGrantsAccess } from './subscription-access';
 
 export function stripeClient() {
@@ -20,8 +20,8 @@ export function appOrigin() {
   return url.origin;
 }
 
-function customerMetadataKey() {
-  return process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_') ? 'stripeLiveCustomerId' : 'stripeTestCustomerId';
+export function customerMetadataKey() {
+  return liveStripeKey() ? 'stripeLiveCustomerId' : 'stripeTestCustomerId';
 }
 
 export async function linkedCustomer(userId: string, create = false) {

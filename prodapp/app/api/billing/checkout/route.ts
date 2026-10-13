@@ -1,12 +1,12 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { authConfigured, billingConfigured, memberDestination } from '@/lib/membership-config';
+import { authConfigured, checkoutConfigured, memberDestination } from '@/lib/membership-config';
 import { appOrigin, availableMembershipPrices, customerHasMembership, linkedCustomer, stripeClient } from '@/lib/billing';
 
 export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   const headers = { 'Cache-Control': 'private, no-store' };
-  if (!authConfigured() || !billingConfigured()) return NextResponse.json({ error: 'Membership enrollment is not open yet.' }, { status: 503, headers });
+  if (!authConfigured() || !checkoutConfigured()) return NextResponse.json({ error: 'Membership enrollment is not open yet.' }, { status: 503, headers });
   try {
     const origin = appOrigin();
     if (request.headers.get('origin') !== origin) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403, headers });
@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
     }
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription', customer: customerId, client_reference_id: userId,
+      integration_identifier: 'marketclarity_membership_qnfzwdtc',
       line_items: [{ price: price.id, quantity: 1 }], success_url: successUrl, cancel_url: cancelUrl,
       metadata: { application: 'marketclarity', clerkUserId: userId, priceId: price.id },
       subscription_data: { metadata: { application: 'marketclarity', clerkUserId: userId } },

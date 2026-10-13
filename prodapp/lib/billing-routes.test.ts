@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'pk_test_fixture');
   vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_fixture');
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_fixture');
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_fixture');
   vi.stubEnv('STRIPE_MONTHLY_PRICE_ID', 'price_membership');
   vi.stubEnv('APP_BASE_URL', 'https://marketclarity.example');
   vi.stubEnv('VERCEL_ENV', 'preview');

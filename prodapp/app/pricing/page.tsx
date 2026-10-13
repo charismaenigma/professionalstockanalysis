@@ -1,6 +1,6 @@
 import { availableMembershipPrices } from '@/lib/billing';
 import { getMembership } from '@/lib/membership';
-import { memberDestination } from '@/lib/membership-config';
+import { memberDestination, checkoutConfigured } from '@/lib/membership-config';
 import BillingButton from '@/components/BillingButton';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +11,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const [membership, prices] = await Promise.all([
     getMembership(), availableMembershipPrices().catch(() => []),
   ]);
-  const ready = prices.length > 0 && membership.status !== 'unavailable';
+  const ready = prices.length > 0 && membership.status !== 'unavailable' && checkoutConfigured();
   return <main className="shell membershipPage">
     <a className="radarBrand" href="/">MarketClarity</a>
     <section className="panel membershipIntro"><span className="eyebrow">MarketClarity membership</span>
@@ -30,7 +30,9 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           {membership.userId ? <BillingButton action="checkout" priceId={price.id} destination={destination}>Subscribe</BillingButton>
             : <a className="membershipLink" href={`/sign-up?next=${encodeURIComponent(`/pricing?next=${encodeURIComponent(destination)}`)}`}>Create an account to subscribe</a>}
           <p className="tiny">Renews automatically until canceled. Manage billing and cancellation in your account. Applicable taxes may be added at checkout.</p>
-        </article>)}</div> : <div className="membershipNotice"><h2>Membership enrollment is not open yet.</h2>
+        </article>)}</div> : <div className="membershipNotice"><h2>Monthly membership</h2>
+          <div className="membershipPrice">$12.99<span> / month</span></div>
+          <p><strong>Membership enrollment is not open yet.</strong></p>
           <p>MarketClarity’s research tools are now reserved for members. Please check back for subscription availability.</p></div>}
       <p className="tiny">Educational research only. Scores are research classifications, not predictions or guarantees of investment returns.</p>
     </section>

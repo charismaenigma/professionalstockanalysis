@@ -16,7 +16,15 @@ export function membershipPriceIds() {
 export function billingConfigured() {
   const key = process.env.STRIPE_SECRET_KEY;
   return Boolean(key && membershipPriceIds().length && process.env.APP_BASE_URL
-    && (process.env.VERCEL_ENV !== 'production' || key.startsWith('sk_live_')));
+    && (process.env.VERCEL_ENV !== 'production' || /^(sk|rk)_live_/.test(key)));
+}
+
+export function checkoutConfigured() {
+  return billingConfigured() && Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+}
+
+export function liveStripeKey() {
+  return /^(sk|rk)_live_/.test(process.env.STRIPE_SECRET_KEY ?? '');
 }
 
 // Return URLs are fixed local member routes, never arbitrary URLs from a request.

@@ -34,6 +34,13 @@ describe('server-owned customer linkage', () => {
     expect(await linkedCustomer('user_member')).toBeNull();
     expect(mock.retrieve).not.toHaveBeenCalled();
   });
+  it('uses the live customer linkage for a restricted live key', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', 'rk_live_fixture');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    mock.user.mockResolvedValue({ privateMetadata: { stripeLiveCustomerId: 'cus_live' } });
+    expect(await linkedCustomer('user_member')).toBe('cus_live');
+    expect(mock.retrieve).toHaveBeenCalledWith('cus_live');
+  });
   it('creates a customer idempotently with server-verified identity and private linkage', async () => {
     mock.user.mockResolvedValue({ privateMetadata: {}, primaryEmailAddressId: 'email_1', emailAddresses: [{ id: 'email_1', emailAddress: 'test@example.com' }] });
     mock.create.mockResolvedValue({ id: 'cus_new' });
