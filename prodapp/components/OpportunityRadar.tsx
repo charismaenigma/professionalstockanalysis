@@ -36,7 +36,7 @@ function GradeCard({lead}:{lead:RadarLead}){
       <div><b>Why it appeared in the original screen</b>{lead.reasons.slice(0,2).map((t,i)=><p key={i}>✓ {t}</p>)}</div>
       <div><b>Important cautions</b>{lead.cautions.slice(0,2).map((t,i)=><p key={i}>⚠ {t}</p>)}</div>
     </div>
-    <div className="radarActions"><span>Checked against stock scoring models. Data as of {v.evidenceAsOf}. Confirm prices and risks before acting.</span><a href={`/?ticker=${encodeURIComponent(lead.symbol)}`}>See full analysis →</a></div>
+    <div className="radarActions"><span>Checked against stock scoring models. Data as of {v.evidenceAsOf}. Confirm prices and risks before acting.</span><a href={`/research?ticker=${encodeURIComponent(lead.symbol)}`}>See full analysis →</a></div>
   </article>;
 }
 export default function OpportunityRadar(){
@@ -75,7 +75,7 @@ export default function OpportunityRadar(){
   const watch=featured.filter(x=>rank(x)>=80&&rank(x)<90).length;
   const hasData=!!report;
   return <main className="shell">
-    <header className="top"><div><a className="radarBrand" href="/">MarketClarity</a><div className="tag">Complex analysis underneath. Simple answers on top.</div></div><a className="radarHome" href="/">← Stock Analyzer</a></header>
+    <header className="top"><div><a className="radarBrand" href="/">MarketClarity</a><div className="tag">Complex analysis underneath. Simple answers on top.</div></div><a className="radarHome" href="/research">← Stock Analyzer</a></header>
     <section className="hero panel radarHero"><div>
       <span className="eyebrow">Daily Opportunity Radar · Quality first</span>
       <h1>Only show what passes the screen.</h1>

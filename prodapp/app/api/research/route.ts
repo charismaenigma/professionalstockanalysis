@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { requireMemberApi } from '@/lib/membership';
 
 export const runtime='nodejs';
 
 export async function POST(req:NextRequest){
+  const denied=await requireMemberApi();if(denied)return denied;
   if(!process.env.OPENAI_API_KEY){
     return NextResponse.json({error:'AI research is optional. Add OPENAI_API_KEY to enable it.'},{status:503});
   }
@@ -18,8 +20,8 @@ export async function POST(req:NextRequest){
       instructions:'Explain investment research evidence in clear plain English. The context identifies an instrumentType of Stock or ETF. For ETFs, first check leveragedFund in the context. If leveragedFund exists, explain DAILY +3x or -3x objectives, compounding/path-dependence, amplified losses, market risk, and that end-of-day data CANNOT justify a day-trading entry, stop, target, or confident alternative recommendation. Alternatives are explicitly unverified research ideas and must not be described as ranked or actionable. DO NOT promote a 3x ETF as a diversified core holding or suggest buy/sell decisions. Otherwise explain normal ETF diversification, fund costs, index methodology, market timing, fund concentration and ETF-specific risks; DO NOT interpret missing company EPS, debt/equity or SEC corporate filings as ETF weaknesses. Distinguish structural issuer-reported facts (and their as-of dates) from real-time verification. For individual stocks, explain company fundamentals and risks. Separate facts from interpretation. Do not change deterministic scores, promise returns, invent missing facts, or present the output as personalized financial advice. Highlight supportive and contradictory evidence and identify any gaps.',
       input:`Ticker: ${symbol}\n\nDeterministic app context:\n${context}\n\nReturn a concise simple summary, key positives, key risks, relevant events or fund considerations, and information that still needs verification. If analyzing an ETF, do not refer to the ETF as if it were a single operating business.`
     });
-    return NextResponse.json({text:response.output_text});
+    return NextResponse.json({text:response.output_text},{headers:{'Cache-Control':'private, no-store'}});
   }catch(e:any){
-    return NextResponse.json({error:e?.message||'Research failed'},{status:400});
+    return NextResponse.json({error:'Research is temporarily unavailable. Please try again later.'},{status:400,headers:{'Cache-Control':'private, no-store'}});
   }
 }
