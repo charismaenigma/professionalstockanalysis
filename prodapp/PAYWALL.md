@@ -1,5 +1,18 @@
 # MarketClarity membership
 
+## Current state: public access
+
+The paywall is temporarily disabled. `MARKETCLARITY_PAYWALL_ENABLED` defaults to
+false unless explicitly set to `true`. Research pages, the Daily Radar, and their
+APIs are public without a Clerk account or Stripe subscription. Membership
+navigation and the landing-page subscription banner are hidden. Pricing and
+sign-in/sign-up links redirect to research; new subscription checkout is disabled.
+Existing billing management and signed webhook validation remain intact.
+
+To restore paid access later, complete and test the setup below, set
+`MARKETCLARITY_PAYWALL_ENABLED=true` in the intended environment, and redeploy.
+The membership behavior described below applies only when that flag is enabled.
+
 The public home page introduces MarketClarity and directs searches to `/research`.
 Research and `/radar` require a signed-in Clerk user with an eligible Stripe subscription.
 `/api/analyze`, `/api/radar`, and `/api/research` repeat the membership check before

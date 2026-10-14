@@ -1,3 +1,8 @@
+// Public access is the default until the owner explicitly re-enables subscriptions.
+export function paywallEnabled() {
+  return process.env.MARKETCLARITY_PAYWALL_ENABLED === 'true';
+}
+
 export function authConfigured() {
   const publicKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const secretKey = process.env.CLERK_SECRET_KEY;
@@ -20,7 +25,7 @@ export function billingConfigured() {
 }
 
 export function checkoutConfigured() {
-  return billingConfigured() && Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  return paywallEnabled() && billingConfigured() && Boolean(process.env.STRIPE_WEBHOOK_SECRET);
 }
 
 export function liveStripeKey() {

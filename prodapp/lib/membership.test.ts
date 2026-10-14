@@ -4,10 +4,11 @@ const mock = vi.hoisted(() => ({ auth: vi.fn(), customer: vi.fn(), subscribed: v
 vi.mock('server-only', () => ({}));
 vi.mock('@clerk/nextjs/server', () => ({ auth: mock.auth }));
 vi.mock('./billing', () => ({ linkedCustomer: mock.customer, customerHasMembership: mock.subscribed }));
-import { getMembership, requireMemberApi } from './membership';
+import { getMembership, requireMemberApi, requireMemberPage } from './membership';
 
 beforeEach(() => {
   vi.resetAllMocks(); vi.unstubAllEnvs();
+  vi.stubEnv('MARKETCLARITY_PAYWALL_ENABLED', 'true');
   vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'pk_test_fixture');
   vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_fixture');
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_fixture');
@@ -21,6 +22,17 @@ beforeEach(() => {
 });
 
 describe('server membership guard', () => {
+  it.each(['', 'false'])('opens pages and APIs without auth or billing when the paywall is %j', async value => {
+    vi.stubEnv('MARKETCLARITY_PAYWALL_ENABLED', value);
+    vi.stubEnv('CLERK_SECRET_KEY', '');
+    vi.stubEnv('STRIPE_SECRET_KEY', '');
+    expect(await requireMemberApi()).toBeNull();
+    expect(await requireMemberPage('/research?ticker=MSFT')).toEqual({ status: 'public' });
+    expect(await requireMemberPage('/radar')).toEqual({ status: 'public' });
+    expect(mock.auth).not.toHaveBeenCalled();
+    expect(mock.customer).not.toHaveBeenCalled();
+    expect(mock.subscribed).not.toHaveBeenCalled();
+  });
   it('requires authentication before contacting payment services', async () => {
     mock.auth.mockResolvedValue({ userId: null });
     const denied = await requireMemberApi();

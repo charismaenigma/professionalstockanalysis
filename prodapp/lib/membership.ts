@@ -3,7 +3,7 @@ import { cache } from 'react';
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
-import { authConfigured, billingConfigured, memberDestination } from './membership-config';
+import { authConfigured, billingConfigured, memberDestination, paywallEnabled } from './membership-config';
 import { customerHasMembership, linkedCustomer } from './billing';
 
 export type Membership = {
@@ -31,6 +31,7 @@ export const getMembership = cache(async (): Promise<Membership> => {
 });
 
 export async function requireMemberPage(destination: string) {
+  if (!paywallEnabled()) return { status: 'public' as const };
   const membership = await getMembership();
   if (membership.status === 'member') return membership;
   const next = encodeURIComponent(memberDestination(destination));
@@ -39,6 +40,7 @@ export async function requireMemberPage(destination: string) {
 }
 
 export async function requireMemberApi() {
+  if (!paywallEnabled()) return null;
   const membership = await getMembership();
   if (membership.status === 'member') return null;
   const status = membership.status === 'signed-out' ? 401 : membership.status === 'unavailable' ? 503 : 403;

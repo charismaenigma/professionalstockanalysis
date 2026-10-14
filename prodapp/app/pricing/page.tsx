@@ -1,13 +1,15 @@
 import { availableMembershipPrices } from '@/lib/billing';
 import { getMembership } from '@/lib/membership';
-import { memberDestination, checkoutConfigured } from '@/lib/membership-config';
+import { memberDestination, checkoutConfigured, paywallEnabled } from '@/lib/membership-config';
 import BillingButton from '@/components/BillingButton';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Membership | MarketClarity' };
 export default async function PricingPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
   const destination = memberDestination(next);
+  if (!paywallEnabled()) redirect(destination);
   const [membership, prices] = await Promise.all([
     getMembership(), availableMembershipPrices().catch(() => []),
   ]);

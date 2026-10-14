@@ -4,7 +4,7 @@ import { authConfigured } from './lib/membership-config';
 
 const authenticate = clerkMiddleware();
 export default function proxy(request: NextRequest, event: NextFetchEvent) {
-  // Pages and API handlers independently deny access when configuration is absent.
+  // With the paywall enabled, pages and APIs deny access if configuration is absent.
   return authConfigured() ? authenticate(request, event) : NextResponse.next();
 }
 export const config = {

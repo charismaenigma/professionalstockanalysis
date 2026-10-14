@@ -1,11 +1,12 @@
 import { getMembership } from '@/lib/membership';
-import { memberDestination } from '@/lib/membership-config';
+import { memberDestination, paywallEnabled } from '@/lib/membership-config';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 export default async function BillingReturnPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
   const destination = memberDestination(next);
+  if (!paywallEnabled()) redirect(destination);
   const membership = await getMembership();
   if (membership.status === 'member') redirect(destination);
   if (membership.status === 'signed-out') redirect(`/sign-in?next=${encodeURIComponent(destination)}`);

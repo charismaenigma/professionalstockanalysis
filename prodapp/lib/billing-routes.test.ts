@@ -22,6 +22,7 @@ function request(body = {}, origin = 'https://marketclarity.example') {
 }
 beforeEach(() => {
   vi.resetAllMocks(); vi.unstubAllEnvs();
+  vi.stubEnv('MARKETCLARITY_PAYWALL_ENABLED', 'true');
   vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'pk_test_fixture');
   vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_fixture');
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_fixture');
@@ -40,6 +41,13 @@ beforeEach(() => {
 });
 
 describe('trusted billing requests', () => {
+  it('does not open checkout while the paywall is disabled, even with billing configured', async () => {
+    vi.stubEnv('MARKETCLARITY_PAYWALL_ENABLED', 'false');
+    expect((await checkout(request({ priceId: 'price_membership' }))).status).toBe(503);
+    expect(mock.auth).not.toHaveBeenCalled();
+    expect(mock.customer).not.toHaveBeenCalled();
+    expect(mock.checkout).not.toHaveBeenCalled();
+  });
   it('rejects cross-site requests to checkout and portal before using providers', async () => {
     expect((await checkout(request({}, 'https://evil.example'))).status).toBe(403);
     expect((await portal(request({}, 'https://evil.example'))).status).toBe(403);
