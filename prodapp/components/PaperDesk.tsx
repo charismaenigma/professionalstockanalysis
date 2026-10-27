@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import BacktestDesk from './BacktestDesk';
 
 type Position = {symbol:string;qty:string;avg_entry_price:string;current_price:string;unrealized_pl:string;unrealized_plpc:string};
 type Order = {id:string;symbol:string;side:string;qty:string;status:string;created_at:string;filled_avg_price?:string|null};
@@ -121,6 +122,7 @@ export default function PaperDesk(){
       {scan&&<div className="scanResults" role="status"><h4>{scan.mode==='preview'?'Preview results':'Paper scan results'} · {scan.submitted} submitted</h4>
         <p className="tiny">As of {new Date(scan.asOf).toLocaleString()} · Market {scan.marketOpen?'open':'closed'}</p>
         {scan.events.map((event,i)=><div key={i}><b>{event.symbol}</b><span>{event.outcome.toUpperCase()}</span><p>{event.message}{event.score!=null?' · Score '+event.score.toFixed(1):''}</p></div>)}</div>}
+      <BacktestDesk token={token} watchlist={dashboard.watchlist}/>
       <div className="paperColumns">
         <div className="paperPane"><h4>Open paper positions</h4>
           {!dashboard.positions?.length?<p className="muted">No open paper positions.</p>:<div className="paperRows">{dashboard.positions.map(p=><div key={p.symbol}><b>{p.symbol}</b><span>{p.qty} shares</span><span className={Number(p.unrealized_pl)<0?'negative':'positive'}>{money(Number(p.unrealized_pl))}</span></div>)}</div>}</div>

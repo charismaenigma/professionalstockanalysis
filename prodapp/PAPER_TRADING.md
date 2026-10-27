@@ -15,6 +15,22 @@ This feature extends the production MarketClarity research app, preserving its e
 
 These are **testable research rules**, not calibrated predictions or a proven profitable strategy. A simulated stop may not prevent a larger real-world loss. No shorting, leverage, options or real-money orders are supported.
 
+## Anytime scans and historical strategy backtesting (v0.4)
+
+The `/paper` dashboard includes a **separate, read-only historical research lab**. It works when the stock market is closed and does not require turning on paper-order submissions or the unattended scheduler.
+
+- **Scan latest close**: computes historical technical triggers for up to five watchlist stocks using their latest *completed daily* bars. This is not the live MarketClarity scanner: spreads, liquidity, fresh quotes, market-open gates, pending corporate news, and paper-order eligibility have not been checked. A trigger is **not** a recommendation to place an order.
+- **Backtesting**: enter any valid US stock symbol, select a historical test period, and compare **ten** fixed-rule strategies: Conservative Swing (technical proxy), Momentum Breakout, Trend Following, Mean Reversion, Opening Range Breakout, VWAP Pullback, Trend Pullback, Volatility Breakout, Moving Average Crossover, and Relative Strength vs. SPY.
+- **Test periods**: most recent completed market day; 1 and 3 weeks; 1, 3 and 6 months; and 1, 3 and 5 years. The supported intervals are selected by period: 5, 15, 30 minutes and 1 hour for 1 day/1 week/3 weeks; 15/30 minutes, 1 hour, or daily for 1 month; 1 hour or daily for 3 months; 1 hour, daily, or weekly for 6 months; and daily or weekly for 1/3/5 years.
+- Intraday-only strategies appear as **incompatible** for daily/weekly testing; they are not automatically substituted with another strategy.
+- Performance is measured from hypothetical $100,000 cash, at most one long position per strategy, 5% allocation limit, and 0.25% nominal initial stop risk. Trades enter **at the next candle's open** after a completed-candle signal; each entry/exit is adjusted by 0.1% adverse slippage, and modeled stops and targets can exit trades within a candle. If both stop and target fall inside the same candle, the model assumes the stop happens first. Intraday strategies close out by the end of the session. This does not use the real Alpaca paper account or place any orders.
+- Reports provide return, trade count, win rate, profit factor, drawdown, realized hypothetical P/L, equity curves, and recent trades. A 5%-allocated buy-and-hold reference uses the same 0.1% entry/exit friction. The highest-return result is only an **in-sample** ranking, not proof of profitability.
+- Historical data comes from Alpaca IEX single-exchange candles, split-adjusted. The hourly option is assembled from regular-session half-hour candles so premarket data is not blended into the 9:30 ET opening hour. Incomplete current sessions and weekly candles are not backtested. Coverage gaps, market holidays, IPO listing dates, gaps in IEX trades, split adjustments, dividend exclusions, and price/volume fidelity can distort comparisons.
+- MarketClarity's current-day SEC/Massive composite scores are **not used historically**, because doing so would introduce future information. Conservative Swing is labeled a distinct, historical *technical proxy* rather than a replay of the live scoring model.
+- This is an experimental educational tool, not a validated live trading system. Results do not include order-book queue depth, real spreads, true trade-by-trade stop order fills, commissions, regulatory fees, borrow fees, shorting, dividends, changing symbol universes, or investment advice. Historical multiple-strategy comparisons invite overfitting.
+
+The historical feature is available via `POST /api/paper/backtest` using the same private `x-marketclarity-token` header. Requests with `{ "mode":"scan" }` use the watchlist; `{ "mode":"backtest", "symbol":"MSFT", "period":"1w", "interval":"15Min" }` run historical simulations. The route exclusively calls market-data **GET** endpoints; it has no paper-order submission path. Results are transient per request rather than a stored experiment database. The existing `/api/paper/run` market-open rules and paper auto-order flags remain unchanged.
+
 ## Connect and activate
 
 1. Use a **dedicated Alpaca paper trading account**. Generate *paper* keys and store them in Vercel project environment settings as `ALPACA_PAPER_KEY` and `ALPACA_PAPER_SECRET`.
