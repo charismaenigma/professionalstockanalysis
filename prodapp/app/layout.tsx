@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './paper.css';
 import { ClerkProvider } from '@clerk/nextjs';
 import MemberNav from '@/components/MemberNav';
 import { authConfigured, paywallEnabled } from '@/lib/membership-config';

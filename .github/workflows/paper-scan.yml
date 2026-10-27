@@ -1,0 +1,25 @@
+name: MarketClarity Paper Scanner
+
+on:
+  schedule:
+    # Three scans near US trading hours. Alpaca market clock blocks closed sessions.
+    - cron: '15 15,17,19 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger authenticated PAPER scan
+        env:
+          DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
+          SCAN_SECRET: ${{ secrets.MARKETCLARITY_CRON_SECRET }}
+        run: |
+          if [ -z "$DEPLOYMENT_URL" ] || [ -z "$SCAN_SECRET" ]; then
+            echo "Configure MARKETCLARITY_URL and MARKETCLARITY_CRON_SECRET in repository settings."
+            exit 1
+          fi
+          curl --fail --show-error --silent --max-time 110 \
+            --header "Authorization: Bearer $SCAN_SECRET" \
+            "${DEPLOYMENT_URL%/}/api/paper/run"
