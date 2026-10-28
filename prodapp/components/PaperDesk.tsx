@@ -6,6 +6,7 @@ type Order = {id:string;symbol:string;side:string;qty:string;status:string;creat
 type CurvePoint = {timestamp:number;equity:number};
 type PaperBudget={tradingSleeveValue:number;reservedCoreValue:number;slotMaxValue:number;usedSleeveValue:number;remainingSleeveValue:number;usedPctOfSleeve:number;slotCount:2|3;availableSlots:number;riskBudgetPerTrade:number;activeSymbols:string[];coreSymbol:string};
 type ClosedTrade={symbol:string;closedAt:string;qty:number;entry:number;exit:number;pnl:number;returnPct:number};
+type Preflight={asOf:string;marketOpen:boolean;readOnly:true;readyForPreview:boolean;readyForManualPaperOrder:boolean;coreVooValue:number;checkCount:{pass:number;warning:number;block:number};checks:Array<{id:string;status:'pass'|'warning'|'block';detail:string}>};
 type Dashboard = {
   flags: {configured:boolean;liveResearch:boolean;ordersEnabled:boolean;autoEnabled:boolean;dataFeed:string};
   account?: {status:string;equity:number;cash:number;lastEquity:number};
@@ -45,6 +46,7 @@ export default function PaperDesk(){
   const [dashboard,setDashboard]=useState<Dashboard|null>(null);
   const [watchInput,setWatchInput]=useState('');
   const [scan,setScan]=useState<Scan|null>(null);
+  const [preflight,setPreflight]=useState<Preflight|null>(null);
   const [busy,setBusy]=useState('');
   const [error,setError]=useState('');
   const [screenerPicks,setScreenerPicks]=useState<string[]>([]);
@@ -67,6 +69,12 @@ export default function PaperDesk(){
   async function refresh(){
     setBusy('refresh');setError('');
     try{setDashboard(await request('/api/paper/status'));}catch(e){setError(e instanceof Error?e.message:'Unable to connect');}
+    finally{setBusy('');}
+  }
+  async function inspectReadiness(){
+    setBusy('preflight');setError('');setPreflight(null);
+    try{setPreflight(await request('/api/paper/preflight'));}
+    catch(e){setError(e instanceof Error?e.message:'Preflight check failed');}
     finally{setBusy('');}
   }
   async function saveWatchlist(symbols:string[]){
@@ -147,6 +155,7 @@ export default function PaperDesk(){
           <h4>Trading controls</h4>
           <p className="tiny">0.25% of the 5% sleeve at risk per entry · 5% aggregate active exposure · up to {dashboard.budget?.slotCount||3} positions · 1% total-account daily loss circuit breaker. Long-only paper bracket orders.</p>
           <div className="paperButtons">
+            <button className="paperRefresh" disabled={!!busy||!dashboard.flags.configured} onClick={inspectReadiness}>Run read-only preflight</button>
             <button disabled={!!busy||!dashboard.flags.configured||!dashboard.flags.liveResearch} onClick={()=>run(false)}>{busy?'Working…':'Preview scan'}</button>
             <button className="paperExecute" disabled={!!busy||!dashboard.flags.ordersEnabled||!dashboard.flags.liveResearch||!dashboard.flags.configured} onClick={()=>run(true)}>Submit qualifying PAPER orders</button>
             <button className="paperRefresh" disabled={!!busy} onClick={refresh}>Refresh</button>
@@ -154,6 +163,13 @@ export default function PaperDesk(){
           {!dashboard.flags.ordersEnabled&&<p className="tiny">Safe mode: paper submissions are disabled. After checking the account and a dry-run, enabling PAPER_TRADE_ENABLED allows manual simulated orders. Keep PAPER_AUTO_ENABLED off for the initial pilot.</p>}
         </div>
       </div>
+      {preflight&&<section className="paperPreflight" aria-label="Paper-trading safety preflight">
+         <h4>Broker and strategy preflight · {new Date(preflight.asOf).toLocaleString()}</h4>
+         <p className="tiny">Read-only test. {preflight.checkCount.pass} passed · {preflight.checkCount.warning} warnings · {preflight.checkCount.block} blocks. A live signal is not guaranteed even when all checks pass.</p>
+         <div className="paperPreflightList">{preflight.checks.map(c=><div className={'paperPreflightRow paperPreflight-'+c.status} key={c.id}><span>{c.status==='pass'?'✓':c.status==='warning'?'!':'×'} {c.id.replaceAll('-',' ')}</span><p>{c.detail}</p></div>)}</div>
+         <p className="tiny">VOO core actual holding: {money(preflight.coreVooValue)} (this system never buys VOO automatically).</p>
+         <p className="tiny">Live-signal evaluation: {preflight.readyForPreview?'Preflight clear to try a manual preview scan.':'Not fully ready yet.'} Manual orders: {preflight.readyForManualPaperOrder?'Eligible for further review':'Not enabled / not safe yet'}.</p>
+       </section>}
       {scan&&<div className="scanResults" role="status"><h4>{scan.mode==='preview'?'Preview results':'Paper scan results'} · {scan.submitted} submitted</h4>
         <p className="tiny">As of {new Date(scan.asOf).toLocaleString()} · Market {scan.marketOpen?'open':'closed'}</p>
         {scan.events.map((event,i)=><div key={i}><b>{event.symbol}</b><span>{event.outcome.toUpperCase()}</span><p>{event.message}{event.score!=null?' · Score '+event.score.toFixed(1):''}</p></div>)}</div>}
