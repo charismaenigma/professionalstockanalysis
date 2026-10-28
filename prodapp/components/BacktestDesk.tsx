@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {periods,strategies,intervalAllowed,recommended,type Period,type Interval,type Strategy} from '@/lib/backtest';
 
 type Trade={entered:string;exited:string;profit:number;reason:string};
@@ -32,16 +32,27 @@ export default function BacktestDesk(){
  const [result,setResult]=useState<Result|null>(null);
  const [error,setError]=useState('');
  const [busy,setBusy]=useState<'test'|'scan'|null>(null);
+ const [retryUntil,setRetryUntil]=useState(0);
+ const [now,setNow]=useState(0);
+ useEffect(()=>{if(!retryUntil)return;setNow(Date.now());const handle=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(handle);},[retryUntil]);
+ const remaining=Math.max(0,Math.ceil((retryUntil-now)/1000));
+ const onCooldown=retryUntil>0&&remaining>0;
  const supported=intervalAllowed[period];
  const disabledRotation=strategy==='Relative Strength Rotation';
  const validSymbol=/^[A-Z][A-Z0-9.]{0,8}$/.test(symbol.trim());
 
  async function run(){
+   if(busy||onCooldown)return;
    setBusy('test');setError('');setResult(null);
    try{
      const params=new URLSearchParams({symbol:symbol.trim(),period,interval,strategy,risk:String(risk)});
      const response=await fetch('/api/backtest?'+params,{cache:'no-store',headers:{'x-marketclarity-token':token}});
      const data=await response.json();
+     if(response.status===429){
+       const header=Number(response.headers.get('retry-after'));
+       const seconds=Number.isFinite(header)&&header>0?header:Number(data.retryAfterSeconds)||65;
+       setRetryUntil(Date.now()+Math.max(5,Math.min(300,seconds))*1000);
+     }
      if(!response.ok)throw Error(data.error||'Historical test could not be completed.');
      setResult(data as Result);
    }catch(e){setError(e instanceof Error?e.message:'Historical test failed.');}
@@ -49,6 +60,7 @@ export default function BacktestDesk(){
  }
 
  async function scanWatchlist(){
+   if(busy||onCooldown)return;
    setBusy('scan');setError('');setScanResult(null);
    try{
      const response=await fetch('/api/backtest/scan'+(watchlist.trim()?'?symbols='+encodeURIComponent(watchlist):''),{headers:{'x-marketclarity-token':token},cache:'no-store'});
@@ -130,14 +142,15 @@ export default function BacktestDesk(){
     Relative Strength Rotation needs historical data for multiple stocks. It is not implemented in this preview.
    </div>}
    <div className="backtestActions">
-    <button className="btBtn" disabled={busy!==null||!validSymbol||!token||disabledRotation} onClick={run}>
-     {busy==='test'?'Running historical test…':'Run historical backtest'}
+    <button className="btBtn" disabled={busy!==null||onCooldown||!validSymbol||!token||disabledRotation} onClick={run}>
+     {busy==='test'?'Running historical test…':onCooldown?'Provider cooldown active':'Run historical backtest'}
     </button>
-    <button className="btBtn secondaryBtn" disabled={busy!==null||!token} onClick={scanWatchlist}>
+    <button className="btBtn secondaryBtn" disabled={busy!==null||onCooldown||!token} onClick={scanWatchlist}>
      {busy==='scan'?'Scanning watchlist…':'Scan selected stocks'}
     </button>
    </div>
    <p className="backtestInfo">After-hours scanning uses the latest available data, not live executable quotes. Enter tickers above to scan without a broker connection; leaving them blank requires Alpaca paper credentials.</p>
+   {onCooldown&&<p className="warningBar" role="status">Market-data cooldown: retry in approximately {remaining} seconds. Multiple scans share your provider's API allowance.</p>}
    {error&&<div className="error backtestError" role="alert">{error}</div>}
   </section>
   {scanResult&&<section className="panel">

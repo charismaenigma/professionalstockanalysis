@@ -1,7 +1,8 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {controlAuthorized,unauthorized} from '@/lib/paper/security';
 import {backtest,periods,intervals,strategies,intervalAllowed,type Candle,type Period,type Interval,type Strategy} from '@/lib/backtest';
-export const runtime='nodejs';export const dynamic='force-dynamic';export const maxDuration=60;
+// Authenticate every caller; allow only the upstream historical candle fetch to use a bounded data cache.
+export const runtime='nodejs';export const dynamic='auto';export const maxDuration=60;
 const millis:Record<Period,number>={'1d':86400000,'1w':7*86400000,'3w':21*86400000,'1m':31*86400000,'3m':93*86400000,'6m':186*86400000,'1y':366*86400000,'3y':1097*86400000,'5y':1828*86400000};
 const agg:Record<Interval,[number,string]>={'5m':[5,'minute'],'15m':[15,'minute'],'30m':[30,'minute'],'1h':[1,'hour'],'1d':[1,'day'],'1w':[1,'week']};
 export async function GET(req:NextRequest){
@@ -18,8 +19,24 @@ export async function GET(req:NextRequest){
  const [multiple,timespan]=agg[interval];
  const u=new URL('https://api.massive.com/v2/aggs/ticker/'+encodeURIComponent(symbol)+'/range/'+multiple+'/'+timespan+'/'+warmup.toISOString().slice(0,10)+'/'+end.toISOString().slice(0,10));
  u.searchParams.set('adjusted','true');u.searchParams.set('sort','asc');u.searchParams.set('limit','50000');u.searchParams.set('apiKey',process.env.MASSIVE_API_KEY);
- const response=await fetch(u,{cache:'no-store',signal:AbortSignal.timeout(20000)});
- if(!response.ok)throw Error('Historical provider returned '+response.status+'. Check historical-data entitlement and requested period.');
+ // Reuse successful candle histories across identical tests. Never cache the authenticated API response.
+ // Daily/weekly bars change less frequently than intraday candles.
+ const cacheSeconds=interval==='1d'||interval==='1w'?3600:900;
+ const response=await fetch(u,{next:{revalidate:cacheSeconds},signal:AbortSignal.timeout(20000)});
+ if(response.status===429){
+  const raw=response.headers.get('retry-after');
+  const asSeconds=raw?Number(raw):NaN;
+  const asDate=raw?Date.parse(raw):NaN;
+  const retryAfterSeconds=Number.isFinite(asSeconds)&&asSeconds>0?Math.ceil(asSeconds):
+   Number.isFinite(asDate)?Math.max(1,Math.ceil((asDate-Date.now())/1000)):65;
+  return NextResponse.json({error:'Massive is temporarily rate-limiting historical data requests (HTTP 429). Allow the provider cooldown before retrying. The Basic plan permits 5 API requests per minute.',retryAfterSeconds},
+   {status:429,headers:{'Retry-After':String(retryAfterSeconds),'Cache-Control':'no-store'}});
+ }
+ if(response.status===403||response.status===401){
+  return NextResponse.json({error:'Massive did not authorize this historical period or interval (HTTP '+response.status+'). Check your Stocks subscription, available history, and API credentials.'},{status:502,headers:{'Cache-Control':'no-store'}});
+ }
+ if(!response.ok)return NextResponse.json({error:'Historical data provider is unavailable (HTTP '+response.status+'). Please retry later.'},
+  {status:502,headers:{'Cache-Control':'no-store'}});
  const data=await response.json();
  if(data.next_url)throw Error('Historical results are paginated; this interval and period exceed the current safe single-request limit. Choose a coarser interval.');
  const all:Candle[]=(data.results||[]).map((r:{t:number;o:number;h:number;l:number;c:number;v:number})=>({time:r.t,open:r.o,high:r.h,low:r.l,close:r.c,volume:r.v})).filter((b:Candle)=>b.time<end.getTime()&&b.open>0&&b.close>0&&b.high>=b.low).sort((a:Candle,b:Candle)=>a.time-b.time);
@@ -33,5 +50,5 @@ export async function GET(req:NextRequest){
  // Historical test metrics should correspond to the requested window only: warmup may open positions.
  // v0.4 explicitly reports this approximation until the event loop supports full boundary-reset state.
  return NextResponse.json({symbol,period,interval,source:'Massive adjusted aggregates',bars:completed.slice(first).length,firstBar:new Date(completed[first].time).toISOString(),lastBar:new Date(completed.at(-1)!.time).toISOString(),warmupBars:first,dataCoverage:'Historical indicators may use earlier warmup bars; simulated trades begin in the selected test window.',...result},{headers:{'Cache-Control':'no-store'}});
- }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Backtest unavailable'}, {status:400});}
+ }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Backtest unavailable'}, {status:400,headers:{'Cache-Control':'no-store'}});}
 }
