@@ -362,3 +362,25 @@ h3{font-size:22px;margin:5px 0 12px}
 .opportunityLab .opArchiveCleanup button,.opportunityLab .opRemoveArchive{border:1px solid #535a76;background:#15243a;color:#cbd8e9;padding:8px 12px;border-radius:9px;font-size:12px;cursor:pointer}
 .opportunityLab .opArchiveCleanup button.opDanger,.opportunityLab .opRemoveArchive{border-color:#6b3b47;color:#ffd1db;background:#331b2a}
 @media(max-width:600px){.opportunityLab .opArchiveItem{align-items:flex-start;flex-direction:column}}
+
+.paperBudget{padding:20px;border:1px solid #355976;border-radius:14px;background:#101f34;margin:18px 0}
+.paperBudgetHeading{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px}
+.paperBudgetHeading h4{margin:0 0 12px}
+.paperBudgetHeading span{font-size:12px;color:#a9c6e0}
+.paperBudgetBar{display:flex;overflow:hidden;height:13px;border-radius:99px;margin-bottom:17px}
+.paperBudgetCore{background:#39698f;flex:95}
+.paperBudgetSleeve{background:#55d2ab;flex:5}
+.paperBudgetDetails{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:11px;margin-bottom:14px}
+.paperBudgetDetails>div{padding:11px;background:#0b1628;border-radius:9px;display:flex;flex-direction:column;gap:5px}
+.paperBudgetDetails span{color:#9db6d0;font-size:12px}
+.paperBudgetDetails strong{font-size:18px;color:#e1f4ff}
+.paperScreenSuggestions{border:1px solid #2e756a;border-radius:11px;padding:13px;margin:14px 0;background:#0b272b}
+.paperScreenSuggestions p{margin:4px 0 8px}
+.paperScreenSuggestions button{background:#16554d;border:1px solid #277f71;border-radius:8px;color:#d3fff3;padding:8px 11px;cursor:pointer;font-size:12px}
+.paperScreenSuggestions button:disabled{opacity:.5}
+.opportunityLab .opPaperBridge{display:inline-flex;padding:10px 14px;color:#b4f1d9;background:#154238;border:1px solid #2f896d;border-radius:9px;margin:4px 0 16px;font-size:13px;font-weight:800;text-decoration:none}
+.paperTradeJournal{margin:22px 0;border:1px solid #344e67;border-radius:13px;padding:18px}
+.paperTradeJournal .tableWrap{overflow:auto}
+.paperTradeJournal table{width:100%;min-width:600px;border-collapse:collapse}
+.paperTradeJournal td,.paperTradeJournal th{padding:10px;text-align:right;font-size:12px;border-bottom:1px solid #2c455f}
+.paperTradeJournal td:first-child,.paperTradeJournal th:first-child{text-align:left}

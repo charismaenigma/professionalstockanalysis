@@ -30,6 +30,7 @@ export function calculatePaperBudget(
  const active=new Set<string>();
  for(const p of positions){
   if(p.symbol==='VOO')continue;
+  if(p.market_value==null||p.qty==null)throw new Error('Missing paper position exposure for '+p.symbol+'.');
   const qty=Number(p.qty),marketValue=Number(p.market_value);
   if(!Number.isFinite(qty)||qty<0||!Number.isFinite(marketValue)||marketValue<0)throw new Error('Cannot verify long-only paper position exposure for '+p.symbol+'.');
   if(qty<=0)continue;

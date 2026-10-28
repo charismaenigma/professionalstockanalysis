@@ -18,10 +18,11 @@ export async function GET(request: NextRequest) {
     dataFeed: 'IEX (single-exchange real-time)'};
   if (!configured) return NextResponse.json({flags, watchlist: [], history: [], positions: [], orders: [], metrics: null});
   try {
-    const [account, positions, orders, fills, history, watchlist] = await Promise.all([
+    const [account, positions, orders, openOrders, fills, history, watchlist] = await Promise.all([
       paperGet<PaperAccount>('/v2/account'),
       paperGet<PaperPosition[]>('/v2/positions'),
       paperGet<PaperOrder[]>('/v2/orders?status=all&limit=100&direction=desc'),
+      paperGet<PaperOrder[]>('/v2/orders?status=open&limit=500'),
       paperGet<PaperFill[]>('/v2/account/activities/FILL?direction=desc&page_size=100'),
       paperGet<PaperHistory>('/v2/account/portfolio/history?period=3M&timeframe=1D'),
       readPaperWatchlist(),
@@ -29,9 +30,7 @@ export async function GET(request: NextRequest) {
     const curve = equityCurve(history);
     const closed = reconstructTrades(fills);
     const summary = summarizeTrades(closed);
-    const budget=calculatePaperBudget(account,positions,
-      orders.filter(o=>o.side==='buy'&&['new','accepted','pending_new','partially_filled','held'].includes(o.status)),
-      positionSlots());
+    const budget=calculatePaperBudget(account,positions,openOrders,positionSlots());
     return NextResponse.json({
       flags,budget,trades:closed.slice(-20).reverse(),account: {status: account.status, equity: Number(account.equity),
         cash: Number(account.cash), lastEquity: Number(account.last_equity)},

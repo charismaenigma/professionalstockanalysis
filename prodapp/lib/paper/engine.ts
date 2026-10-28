@@ -23,7 +23,10 @@ export interface ScanResult {
   budget?: PaperRiskBudget;
 }
 function dateKey() {
-  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replaceAll('-','');
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',
+    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const named=Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+  return named.year+named.month+named.day;
 }
 
 export async function runPaperScan(execute: boolean): Promise<ScanResult> {

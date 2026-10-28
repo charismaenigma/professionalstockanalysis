@@ -131,6 +131,8 @@ export default function OpportunityLab(){
    <div className="backtestSection">
     <div className="opSectionHeading"><div><h3>Screened stocks · matched performance</h3>
      <p>Returns start at the screening session's open; they are observed buy-and-hold changes, not simulated strategy trade returns.</p></div></div>
+    <p className="backtestInfo">Screener ranks are not yet verified entry signals. Review the picks in the Paper Desk; transfer alone does not place orders.</p>
+    <a className="opPaperBridge" href={'/paper?candidates='+encodeURIComponent(result.selected.slice(0,5).map(x=>x.ticker).join(','))+'&screenDate='+encodeURIComponent(result.requestedSession)}>Review top 5 in Paper Trading Lab</a>
     <div className="tableWrap"><table className="opportunityTable opTrackingTable"><thead><tr><th>Rank</th><th>Stock</th><th>Score</th><th>Prior close</th><th>Volume ratio</th><th>Day 1 change</th><th>Review window change</th><th>vs. VOO</th><th>Follow</th></tr></thead><tbody>
      {result.selected.map(x=>{
       const observed=result.audit?.observedPicks.find(v=>v.pick.ticker===x.ticker)?.observed;
