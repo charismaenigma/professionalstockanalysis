@@ -44,6 +44,7 @@ export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=
  // signal on prior completed bar; orders fill no earlier than NEXT bar open; exit stop-first on ambiguous candles
  for(let i=Math.max(20,startAt);i<candles.length;i++){
   const b=candles[i],prev=candles[i-1],sig=signal(candles,i-1,strategy);
+  let closedThisBar=false;
   if(shares){
    let out=0,why='';
    if(b.open<=stop){out=b.open;why='gap stop';}else if(b.open>=target){out=b.open;why='gap target';}
@@ -51,9 +52,10 @@ export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=
    else if(sig.exit){out=b.open;why='signal';}
    if(out>0){const proceeds=shares*out*(1-feeBps/10000);cash+=proceeds;const profit=proceeds-cost;
     trades.push({entered:entryTime,exited:new Date(b.time).toISOString(),entry,exit:out,profit:Math.round(profit*100)/100,reason:why,shares,entryCost:Math.round(cost*100)/100,exitProceeds:Math.round(proceeds*100)/100,returnPct:profit/cost*100,stop,target});
-    shares=0;cost=0;}
+    shares=0;cost=0;closedThisBar=true;}
   }
-  if(!shares&&sig.enter&&i<candles.length-1){
+  // Never retroactively buy at this candle's open after an intrabar exit.
+  if(!shares&&!closedThisBar&&sig.enter&&i<candles.length-1){
    const volatility=atr(candles,i-1);
    const dist=Number.isFinite(volatility)&&volatility>0?volatility*1.5:prev.close*.025;
    const ask=b.open*(1+feeBps/10000);
