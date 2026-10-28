@@ -1,7 +1,7 @@
 'use client';
 import {useState} from 'react';
 import {periods,strategies,intervalAllowed,recommended,type Period,type Interval,type Strategy} from '@/lib/backtest';
-type Result={symbol:string;period:string;interval:string;bars:number;firstBar:string;lastBar:string;source:string;dataCoverage:string;returnPct:number;holdPct:number;closedTrades:number;winRate:number|null;profitFactor:number|null;maxDrawdownPct:number;timeInMarketPct:number;trades:{entered:string;exited:string;profit:number;reason:string}[];assumptions:string;curve:{time:number;equity:number}[]};
+type Result={strategy:string;symbol:string;period:string;interval:string;bars:number;firstBar:string;lastBar:string;source:string;dataCoverage:string;returnPct:number;holdPct:number;closedTrades:number;winRate:number|null;profitFactor:number|null;maxDrawdownPct:number;timeInMarketPct:number;trades:{entered:string;exited:string;profit:number;reason:string}[];assumptions:string;curve:{time:number;equity:number}[]};
 const names:Record<string,string>={'1d':'Most recent market day','1w':'1 week','3w':'3 weeks','1m':'1 month','3m':'3 months','6m':'6 months','1y':'1 year','3y':'3 years','5y':'5 years'};
 const intervalNames:Record<string,string>={'5m':'5 minutes','15m':'15 minutes','30m':'30 minutes','1h':'Hourly','1d':'Daily','1w':'Weekly'};
 export default function BacktestDesk(){
