@@ -33,9 +33,9 @@ const benchmarks=[
  ['XLU','Utilities'],['XLY','Consumer Discretionary'],['XLP','Consumer Staples'],
  ['XLB','Materials'],['XLRE','Real Estate']
 ] as const;
-const exclusion=new Set(benchmarks.map(x=>x[0]).concat([
+const exclusion=new Set<string>([...benchmarks.map(x=>String(x[0])),...[
  'SPY','QQQ','IWM','DIA','TQQQ','SQQQ','SOXL','SOXS','LABU','LABD','ARKK','ARKG','UVXY','SVXY','GLD','SLV','TLT','SH','SDS'
-]));
+]]);
 const validTicker=(ticker:string)=>/^[A-Z]{1,5}(?:[.][A-Z])?$/.test(ticker)&&!exclusion.has(ticker);
 const round=(x:number|null,digits=2)=>x==null||!Number.isFinite(x)?null:Number(x.toFixed(digits));
 const iso=(d:Date)=>d.toISOString().slice(0,10);
