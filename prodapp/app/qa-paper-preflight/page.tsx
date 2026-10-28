@@ -12,6 +12,7 @@ export default async function Page(){
    <p>Checks: {r.checkCount.pass} pass; {r.checkCount.warning} warnings; {r.checkCount.block} blocks.</p>
    <p>Watchlist count: {r.watchlist.length}. Slots: {r.budget?.slotCount??0}; active symbols: {r.budget?.activeSymbols.length??0}; remaining sleeve available: {r.budget&&r.budget.remainingSleeveValue>0?'yes':'no'}.</p>
    <p>Conditions: {r.checks.map(x=>x.id+':'+x.status).join('; ')}</p>
+   <p>IEX check detail: {r.checks.find(x=>x.id==='iex-feed')?.detail||'Unavailable'}</p>
    <p>Manual orders enabled: {String(r.manualPaperOrdersEnabled)}; unattended enabled: {String(r.automaticPaperOrdersEnabled)}.</p>
    <p>Dry-run scan mode: {scan.mode}; submitted: {scan.submitted}; event count: {scan.events.length}; first outcome: {scan.events[0]?.outcome??'none'}.</p>
    <p>Temporary restricted-to-preview diagnostic. No account identities, balances, symbols, tokens, or position details displayed.</p>

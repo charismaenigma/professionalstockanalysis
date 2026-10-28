@@ -59,19 +59,25 @@ export async function runPaperPreflight():Promise<PreflightReport>{
  add('watchlist',report.watchlist.length?'pass':'warning',
   report.watchlist.length?report.watchlist.length+' symbol(s) on Alpaca paper watchlist.':'Paper watchlist is empty; choose stocks explicitly before preview scanning.');
  // A quote read from AAPL is connectivity-only, never a selection or order.
- const sample=report.watchlist[0]||'AAPL';
+ // Validate IEX access with a liquid diagnostic symbol rather than assuming the
+ // first watchlist pick is liquid on IEX. This does NOT shortlist or trade AAPL.
+ const diagnosticSymbol='AAPL';
  try{
-  const snapshot=await dataGet<PaperSnapshot>('/v2/stocks/'+encodeURIComponent(sample)+'/snapshot?feed=iex');
+  const snapshot=await dataGet<PaperSnapshot>('/v2/stocks/'+diagnosticSymbol+'/snapshot?feed=iex');
   const quote=snapshot.latestQuote,trade=snapshot.latestTrade;
   const qTime=Date.parse(quote?.t||''),tTime=Date.parse(trade?.t||'');
   const valid=Number.isFinite(qTime)&&Number.isFinite(tTime)&&Number(quote?.ap)>0&&Number(quote?.bp)>0&&Number(trade?.p)>0;
   const age=valid?Math.max(Date.now()-qTime,Date.now()-tTime):Infinity;
   const fresh=valid&&age>=-60000&&age<=300000;
-  const status:ReadinessCheck['status']=!valid?'block':fresh?'pass':'warning';
-  add('iex-feed',status,!valid?'IEX snapshot is unavailable or lacks a two-sided quote and trade.':
-   fresh?'Alpaca IEX quote/trade snapshot is currently fresh (sample '+sample+').':
-   'IEX quote/trade snapshot exists but is stale ('+sample+'); this is expected after market close. Freshness must be rechecked during market hours.');
- }catch(e){add('iex-feed','block','Alpaca IEX snapshot lookup failed: '+(e instanceof Error?e.message.slice(0,100):'unknown provider error'));}
+  const status:ReadinessCheck['status']=fresh?'pass':clock.is_open?'block':'warning';
+  add('iex-feed',status,!valid?
+   'IEX API was reachable, but the AAPL diagnostic snapshot lacks a complete trade and two-sided quote'+(clock.is_open?'. Live entries are blocked.':'; closed-session snapshot incompleteness is not proof of a live feed failure.') :
+   fresh?'IEX quote/trade snapshot is currently fresh (AAPL connectivity test only).':
+   'IEX snapshot was returned, but quote/trade timestamps are stale. '+(clock.is_open?'Do not enter trades.':'This is expected outside trading hours.'));
+ }catch(e){add('iex-feed','block','Alpaca IEX API request failed: '+(e instanceof Error?e.message.slice(0,100):'unknown provider error'));}
+ // A liquid diagnostic symbol passing does NOT certify a candidate's execution quote.
+ // The live swing strategy must separately validate the exact ticker's own timestamp,
+ // bid/ask spread, research consistency and bracket prices before any order.
  add('manual-switch',paperOrdersEnabled()?'pass':'warning',
    paperOrdersEnabled()?'Manual PAPER order submissions are enabled.':'Manual PAPER orders remain disabled until separately approved.');
  add('automatic-switch',!autoScanEnabled()?'pass':'warning',
