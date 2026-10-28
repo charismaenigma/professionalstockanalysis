@@ -156,7 +156,7 @@ export default function BacktestDesk(){
     <h3>Recent simulated trade exits</h3>
     {!result.trades.length?<p>No completed trades for this test. An empty trade sample cannot validate a strategy.</p>:
      result.trades.slice(0,15).map((t,i)=><p key={i}>
-      {new Date(t.exited).toLocaleDateString()} · {t.reason} · {t.profit.toFixed(2){'}'} simulated P/L
+      {new Date(t.exited).toLocaleDateString()} · {t.reason} · {t.profit.toFixed(2)} simulated P/L
      </p>)}
    </div>
    <p className="backtestInfo">{result.assumptions} {result.dataCoverage} Prototype results are exploratory and not a verified trading edge.</p>
