@@ -5,7 +5,11 @@ export const runtime='nodejs';export const dynamic='force-dynamic';export const 
 const dayMs=86400000;
 function iso(d:Date){return d.toISOString().slice(0,10);}
 function weekdayBefore(date:string){let d=new Date(date+'T12:00:00.000Z');do{d=new Date(d.getTime()-dayMs);}while([0,6].includes(d.getUTCDay()));return iso(d);}
-function nyDate(){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+function nyDate(){
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ const values=Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+ return values.year+'-'+values.month+'-'+values.day;
+}
 type ProviderResponse={status?:string;results?:Array<{T:string;o:number;h:number;l:number;c:number;v:number}>;resultsCount?:number};
 async function grouped(date:string):Promise<DailyBar[]>{
  const url=new URL('https://api.massive.com/v2/aggs/grouped/locale/us/market/stocks/'+date);

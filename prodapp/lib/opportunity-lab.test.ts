@@ -21,6 +21,15 @@ describe('point-in-time opportunity scanner',()=>{
   expect(audit.missed[0].ticker).toBe('BBB');
   expect(audit.missed[0].openToClosePct).toBe(50);
  });
+ it('shows rejected illiquid tickers as ex-post misses when they move on audited day',()=>{
+  const old=[bar('AAA',3,10000,'2026-10-20'),bar('BBB',20,1000000,'2026-10-20')];
+  const prior=[bar('AAA',3,10000,'2026-10-21'),bar('BBB',22,2000000,'2026-10-21')];
+  const ranked=rankCandidates(old,prior,'day');
+  const outcome=[bar('AAA',10,5000000,'2026-10-22',8),bar('BBB',22,2000000,'2026-10-22',22)];
+  const audit=auditCandidates(ranked.all,outcome,ranked.discarded,1);
+  expect(audit.missed[0].ticker).toBe('AAA');
+  expect(audit.missed[0].reason).toContain('outside');
+ });
  it('excludes illiquid and very low-priced tickers before seeing outcomes',()=>{
   const ranked=rankCandidates([bar('AAA',3,10000,'2026-10-20')],[bar('AAA',3,10000,'2026-10-21')],'swing');
   expect(ranked.all).toHaveLength(0);

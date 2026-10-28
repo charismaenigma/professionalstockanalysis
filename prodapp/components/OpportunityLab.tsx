@@ -18,7 +18,7 @@ export default function OpportunityLab(){
   }catch(e){setError(e instanceof Error?e.message:'Opportunity scan failed')}
   finally{setBusy(false)}
  }
- return <main className="shell opportunityLab">
+ return <main className="shell backtestLab opportunityLab">
   <header className="top"><div><div className="brand">MarketClarity</div><div className="tag">Adaptive Opportunity Lab · Research preview</div></div>
   <div className="mainTopActions"><a className="radarHome" href="/backtest">Historical Backtesting</a><a className="radarHome" href="/paper">Paper Trading</a></div></header>
   <section className="panel">
@@ -51,7 +51,7 @@ export default function OpportunityLab(){
    </div>
    {result.audit&&<div className="backtestSection">
     <h3>After-close missed-opportunity review</h3>
-    <p>These tickers rose during the session but weren't among our ten pre-session picks. This is a <strong>hindsight audit</strong>—not evidence we could have bought at the open or sold at the high.</p>
+    <p>These tickers rose during the session but weren't among our ten pre-session picks. Some were excluded by the original liquidity or price filters. This is a <strong>hindsight audit</strong>—not evidence we could have bought at the open or sold at the high.</p>
     <div className="tableWrap"><table className="opportunityTable"><thead><tr><th>Ticker</th><th>Open → close</th><th>Max favorable from open</th><th>Prior rank</th><th>Why we missed it</th></tr></thead><tbody>
      {result.audit.missed.map(x=><tr key={x.ticker}><td><strong>{x.ticker}</strong></td><td style={{color:'var(--green)'}}>{fmtPct(x.openToClosePct)}</td><td>{fmtPct(x.maxFavorableFromOpenPct)}</td><td>{x.priorRank??'Not ranked'}</td><td style={{textAlign:'left'}}>{x.reason}</td></tr>)}
     </tbody></table></div>

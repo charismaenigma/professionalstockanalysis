@@ -1,7 +1,7 @@
 /** Research-only, point-in-time daily universe scanner. Versioned and deterministic.
  * Inputs from the previous two completed trading sessions only. NOT an execution strategy.
  */
-export const SCREENER_VERSION='daily-universe-v0.1.0';
+export const SCREENER_VERSION='daily-universe-v0.1.1';
 export type ScreenerMode='day'|'swing';
 export type DailyBar={ticker:string;date:string;open:number;high:number;low:number;close:number;volume:number};
 export type Features={price:number;volume:number;dollarVolume:number;relativeVolume:number;previousReturnPct:number;previousRangePct:number};
@@ -57,18 +57,23 @@ export function auditCandidates(
  const selected=ranked.slice(0,topCount);
  const observedPicks=selected.map(p=>({pick:p,observed:observations.get(p.ticker)||null}));
  const picked=new Set(selected.map(x=>x.ticker));
- const eligibleSet=new Set(ranked.map(x=>x.ticker));
  const allRank=new Map(ranked.map(x=>[x.ticker,x.rank]));
- // Misses are ranked by observed outcome but their screen status is based ONLY on pre-session data.
- // That distinction is essential: these are hindsight diagnostics, not hypothetical executable trades.
- const bestEligible=[...observations.values()].filter(x=>eligibleSet.has(x.ticker))
-  .sort((a,b)=>b.openToClosePct-a.openToClosePct||a.ticker.localeCompare(b.ticker));
- const leaders=bestEligible.slice(0,20);
+ // Diagnostic-only post-session eligibility: cannot influence earlier screening decisions.
+ // Include big liquid movers that were unranked, so the "missed" table can explain filtering failures.
+ const auditedUniverse=[...observations.values()].filter(x=>{
+  const b=outcome.get(x.ticker)!;
+  return /^[A-Z]{1,5}(?:\\.[A-Z])?$/.test(x.ticker)
+   &&b.close>=5&&b.close<=1000&&b.volume>=500000&&b.close*b.volume>=10000000;
+ }).sort((a,b)=>b.openToClosePct-a.openToClosePct||a.ticker.localeCompare(b.ticker));
+ const leaders=auditedUniverse.slice(0,20);
  const captured=leaders.filter(x=>picked.has(x.ticker));
- const missed:Missed[]=bestEligible.filter(x=>!picked.has(x.ticker)&&x.openToClosePct>0).slice(0,10).map(x=>({
+ const missed:Missed[]=auditedUniverse.filter(x=>!picked.has(x.ticker)&&x.openToClosePct>0).slice(0,10).map(x=>({
   ...x,priorRank:allRank.get(x.ticker)||null,
-  reason:allRank.has(x.ticker)?'Qualified for screening but ranked below the top '+topCount+' before the session':discarded.get(x.ticker)||'Excluded or missing prior-session evidence'
+  reason:allRank.has(x.ticker)
+   ?'Screened but ranked below the top '+topCount
+   :discarded.get(x.ticker)||'No usable pre-session baseline or eligibility was unavailable'
  }));
+ const missedTotal=auditedUniverse.filter(x=>!picked.has(x.ticker)&&x.openToClosePct>0).length;
  const observed=observedPicks.filter(x=>x.observed!=null).map(x=>x.observed!);
  const positives=observed.filter(x=>x.openToClosePct>0).length;
  const equalAverage=(xs:number[])=>xs.length?round(xs.reduce((a,b)=>a+b,0)/xs.length):null;
@@ -76,6 +81,6 @@ export function auditCandidates(
  return {observedPicks,missed,capturedLeaders:captured.length,leaderCount:leaders.length,
   observedPickCount:observed.length,positiveMoveCount:positives,observedPositiveRate:observed.length?round(positives/observed.length*100):null,
   averageOpenToClosePct:equalAverage(observed.map(x=>x.openToClosePct)),missedPositiveEligibleCount:missedTotal,
-  auditUniverseCount:bestEligible.length,
+  auditUniverseCount:auditedUniverse.length,
   caveat:'All move statistics are hindsight open-to-close observations, NOT simulated fills or strategy returns. Highs and lows may not have been executable. Intraday timing, spread, slippage and short-sale rules are not modeled.'};
 }

@@ -81,7 +81,7 @@ export default function BacktestDesk(){
  return <main className="shell backtestLab">
   <header className="top">
    <div><div className="brand">MarketClarity</div><div className="tag">Strategy Lab · Historical research</div></div>
-   <a className="radarHome" href="/paper">← Back to Paper Trading</a>
+   <div className="mainTopActions"><a className="radarHome" href="/opportunity-lab">Daily Opportunity Lab</a><a className="radarHome" href="/paper">← Back to Paper Trading</a></div>
   </header>
   <section className="panel">
    <div className="backtestIntro">
