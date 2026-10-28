@@ -320,3 +320,27 @@ h3{font-size:22px;margin:5px 0 12px}
 .opportunityLab .opportunityTable td:first-child,.opportunityLab .opportunityTable th:first-child,
 .opportunityLab .opportunityTable td:nth-child(2),.opportunityLab .opportunityTable th:nth-child(2){text-align:left}
 .opportunityLab .backtestStat b{font-size:23px}
+
+/* Benchmark and candidate tracking extension */
+.opportunityLab .opSectionHeading{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:15px}
+.opportunityLab .opSectionHeading h2,.opportunityLab .opSectionHeading h3{margin:3px 0 5px}
+.opportunityLab .opSectionHeading p{font-size:13px;color:var(--muted);margin:0}
+.opportunityLab .opMiniCount{border:1px solid var(--line);border-radius:20px;color:#a9cce9;font-size:12px;white-space:nowrap;padding:5px 12px}
+.opportunityLab .opSavedList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.opportunityLab .opSavedItem{background:#09192a;border:1px solid #2c4560;border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.opportunityLab .opSavedItem>div:first-child{display:flex;flex-direction:column;gap:2px}
+.opportunityLab .opSavedItem strong{font-size:16px}
+.opportunityLab .opSavedItem span{font-size:11px;color:var(--muted)}
+.opportunityLab .opSavedActions{display:flex;gap:6px}
+.opportunityLab .opSavedActions button,.opportunityLab .opTrackBtn{border:1px solid #37618b;border-radius:9px;padding:7px 10px;background:#153252;color:#c9e6ff;font-size:12px;font-weight:750;cursor:pointer}
+.opportunityLab .opSavedActions button.opRemove{border-color:#573843;color:#f7b7c0;background:#2a1d27}
+.opportunityLab .opSavedActions button:disabled{opacity:.4;cursor:not-allowed}
+.opportunityLab .opTrackBtn.opTrackActive{color:#80efc1;border-color:#25674e;background:#153a30}
+.opportunityLab .opComparisonInfo{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;border:1px solid #37566e;border-radius:12px;background:#10283e;padding:12px 14px;margin:20px 0 8px;font-size:13px}
+.opportunityLab .opComparisonInfo span{color:#bfd0e6}
+.opportunityLab .opBenchTable{min-width:680px}
+.opportunityLab .opTrackingTable{min-width:1050px}
+.opportunityLab .opBenchTable th:nth-child(2),.opportunityLab .opBenchTable td:nth-child(2){text-align:left}
+.opportunityLab .opVooRow{background:#122a41}
+.opportunityLab .opBenchTable strong{letter-spacing:.03em}
+@media(max-width:650px){.opportunityLab .opSectionHeading{align-items:start}.opportunityLab .opSavedList{grid-template-columns:1fr}}
