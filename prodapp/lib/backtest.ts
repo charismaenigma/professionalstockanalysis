@@ -33,13 +33,13 @@ export function signal(a:Candle[],i:number,s:Strategy):Signal {
  }
 }
 export type Fill={entered:string;exited:string;entry:number;exit:number;profit:number;reason:string};
-export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=100000){
+export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=100000,startAt=20){
  if(strategy==='Relative Strength Rotation')throw new Error('Relative Strength Rotation requires synchronized multi-asset history and is not yet implemented.');
- if(candles.length<25)throw new Error('Insufficient bars: at least 25 completed candles are required.');
+ if(candles.length<25||startAt>=candles.length)throw new Error('Insufficient bars: at least 25 completed candles are required.');
  const cash0=initial;let cash=initial,shares=0,entry=0,entryTime='',stop=0,target=0,cost=0,peak=initial,maxDD=0,exposure=0;
  const trades:Fill[]=[];const curve:{time:number;equity:number}[]=[]; const feeBps=10;
  // signal on prior completed bar; orders fill no earlier than NEXT bar open; exit stop-first on ambiguous candles
- for(let i=20;i<candles.length;i++){
+ for(let i=Math.max(20,startAt);i<candles.length;i++){
   const b=candles[i],prev=candles[i-1],sig=signal(candles,i-1,strategy);
   if(shares){
    let out=0,why='';
@@ -63,7 +63,7 @@ export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=
  const last=candles[candles.length-1];const equity=cash+shares*last.close;
  const wins=trades.filter(t=>t.profit>0),losses=trades.filter(t=>t.profit<0);
  const gp=wins.reduce((a,t)=>a+t.profit,0),gl=-losses.reduce((a,t)=>a+t.profit,0);
- return {strategy,initial,equity,returnPct:(equity/cash0-1)*100,holdPct:(last.close/candles[20].open-1)*100,
+ return {strategy,initial,equity,returnPct:(equity/cash0-1)*100,holdPct:(last.close/candles[Math.max(20,startAt)].open-1)*100,
   closedTrades:trades.length,winRate:trades.length?wins.length/trades.length*100:null,profitFactor:gl>0?gp/gl:null,
   maxDrawdownPct:maxDD,timeInMarketPct:exposure/Math.max(1,curve.length)*100,openPosition:shares>0,
   trades:trades.slice(-50).reverse(),curve,assumptions:'Historical simulation only. Next-bar entries, 10 bps entry and exit friction, 5% max allocation, 0.25% default equity-risk budget; intrabar stops execute at stop unless gapped. No shorting or live orders.'};

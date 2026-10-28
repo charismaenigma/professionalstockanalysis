@@ -27,9 +27,9 @@ export async function GET(req:NextRequest){
  const first=completed.findIndex(b=>b.time>=start.getTime());
  if(first<0||first<20)throw Error('Insufficient historical data or warmup bars. Try a shorter period or another interval.');
  const dataSet=completed.slice(Math.max(0,first-60));
- const result=backtest(dataSet,strategy,risk);
+ const result=backtest(dataSet,strategy,risk,100000,Math.min(first,60));
  // Historical test metrics should correspond to the requested window only: warmup may open positions.
  // v0.4 explicitly reports this approximation until the event loop supports full boundary-reset state.
- return NextResponse.json({symbol,period,interval,source:'Massive adjusted aggregates',bars:completed.slice(first).length,firstBar:new Date(completed[first].time).toISOString(),lastBar:new Date(completed.at(-1)!.time).toISOString(),warmupBars:first,dataCoverage:'Results include a 60-bar signal warmup; initial window metrics may include warmup exposure.',...result},{headers:{'Cache-Control':'no-store'}});
+ return NextResponse.json({symbol,period,interval,source:'Massive adjusted aggregates',bars:completed.slice(first).length,firstBar:new Date(completed[first].time).toISOString(),lastBar:new Date(completed.at(-1)!.time).toISOString(),warmupBars:first,dataCoverage:'Historical indicators may use earlier warmup bars; simulated trades begin in the selected test window.',...result},{headers:{'Cache-Control':'no-store'}});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Backtest unavailable'}, {status:400});}
 }
