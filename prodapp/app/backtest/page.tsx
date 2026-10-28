@@ -1,0 +1,1 @@
+import BacktestDesk from '@/components/BacktestDesk';export const metadata={title:'Anytime Backtesting — MarketClarity'};export default function Page(){return <BacktestDesk/>;}
