@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import ResearchArchive from './ResearchArchive';
 type Mode='day'|'swing';
 type Horizon='1d'|'1w'|'1m';
 type Candidate={ticker:string;score:number;rank:number;features:{price:number;volume:number;dollarVolume:number;relativeVolume:number;previousReturnPct:number;previousRangePct:number};reasons:string[]};
@@ -90,6 +91,7 @@ export default function OpportunityLab(){
     </div>)}</div>}
    <p className="backtestInfo">This shortlist is saved only in your current browser, not in the cloud. It is not automatically refreshed in the background. To see updated returns, select Review.</p>
   </section>
+  <ResearchArchive result={result} saved={saved} restoreSaved={setSaved}/>
   {result&&<section className="panel" style={{marginTop:18}}>
    <span className="eyebrow">Versioned pre-session model · {result.modelVersion}</span>
    <h2>{result.mode==='day'?'Day':'Swing'} opportunities · {result.requestedSession}</h2>

@@ -22,3 +22,6 @@ Preview-only read-only diagnostic confirmed all 12 requested ETFs (VOO and the 1
 
 ## Broader market reference
 VTI joins VOO and the 11 S&P 500 sector funds as the thirteenth benchmark. VOO remains the primary relative-return baseline (vs VOO percentage points); VTI provides a distinct broad-US-stock-market comparison. All 13 ETF rows must appear regardless of provider data availability.
+
+## Browser research archive v0.3
+The Opportunity Lab archives a compact copy of each successful screen (candidate list, model version, missed picks, ETF/stock price observations and historical review window), keyed by date, mode, and horizon. All 13 ETFs include VTI; archive retains up to 120 snapshots. Every run saves only inside the device's localStorage, not the hosting server or Google account. Browser clearing, quota exhaustion, private windows, and device switching can remove data. Export JSON for full MarketClarity backups (including tracked-stock shortlist) or CSV for Google Sheets, and import the validated JSON backup. Old records and all records can be deleted in the UI. The archive stores no passwords, brokerage tokens or API secrets. This is NOT a nightly unattended process; only research runs while the browser session is active are captured.

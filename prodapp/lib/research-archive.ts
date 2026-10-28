@@ -45,7 +45,7 @@ export function isArchiveEntry(value:unknown):value is ArchiveEntry{
  if(!value||typeof value!=='object')return false;
  const v=value as Partial<ArchiveEntry>;
  return typeof v.id==='string'&&v.id.length<100&&typeof v.capturedAt==='string'&&
- /^\\d{4}-\\d{2}-\\d{2}$/.test(v.session||'')&&['day','swing'].includes(v.mode||'')&&
+ /^\d{4}-\d{2}-\d{2}$/.test(v.session||'')&&['day','swing'].includes(v.mode||'')&&
  ['1d','1w','1m'].includes(v.horizon||'')&&typeof v.modelVersion==='string'&&
  Array.isArray(v.selected)&&v.selected.length<=25&&v.selected.every(x=>/^[A-Z0-9.]{1,10}$/.test(x.ticker))&&
  Array.isArray(v.benchmarks)&&v.benchmarks.length<=20&&v.benchmarks.every(x=>/^[A-Z0-9.]{1,10}$/.test(x.ticker))&&
@@ -57,7 +57,7 @@ export function importBackup(raw:unknown):ArchiveBackup{
  const b=raw as Partial<ArchiveBackup>;
  if(b.version!==ARCHIVE_VERSION||!Array.isArray(b.entries)||!Array.isArray(b.shortlist)||b.entries.length>500)
   throw new Error('Unsupported or invalid MarketClarity research backup.');
- if(!b.entries.every(isArchiveEntry)||!b.shortlist.every(x=>x&&/^[A-Z0-9.]{1,10}$/.test(x.ticker)&&/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date)&&['day','swing'].includes(x.mode))||b.shortlist.length>100)
+ if(!b.entries.every(isArchiveEntry)||!b.shortlist.every(x=>x&&/^[A-Z0-9.]{1,10}$/.test(x.ticker)&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&['day','swing'].includes(x.mode))||b.shortlist.length>100)
   throw new Error('Backup contains invalid or unsupported records.');
  return {version:1,exportedAt:String(b.exportedAt||''),entries:b.entries.slice(0,MAX_ARCHIVE_ENTRIES),shortlist:b.shortlist.slice(0,80)};
 }
