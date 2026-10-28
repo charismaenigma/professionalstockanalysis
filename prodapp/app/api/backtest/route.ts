@@ -13,6 +13,11 @@ export async function GET(req:NextRequest){
  if(!periods.includes(period)||!intervals.includes(interval)||!intervalAllowed[period].includes(interval)||!strategies.includes(strategy))throw Error('Unsupported period, candle interval, or strategy.');
  if(!process.env.MASSIVE_API_KEY)throw Error('Historical market-data provider is not configured.');
  const risk=Number(q.get('risk')||'0.25');if(!Number.isFinite(risk)||risk<.1||risk>1)throw Error('Risk must be 0.1–1%.');
+ const portfolio=Number(q.get('portfolio')||'100000');
+ const slots=Number(q.get('slots')||'3');
+ if(!Number.isFinite(portfolio)||portfolio<1000||portfolio>10000000)throw Error('Total hypothetical portfolio must be between $1,000 and $10,000,000.');
+ if(slots!==2&&slots!==3)throw Error('Trading position slots must be 2 or 3.');
+ const sleeveCapital=portfolio*.05;
  // For intraday: extend lookback to warm up indicators, but do not claim data we have not received.
  const end=new Date(),start=new Date(end.getTime()-millis[period]);
  const warmup=new Date(start.getTime()-Math.max(60*86400000,millis[period]/3));
@@ -46,9 +51,9 @@ export async function GET(req:NextRequest){
  const first=completed.findIndex(b=>b.time>=start.getTime());
  if(first<0||first<20)throw Error('Insufficient historical data or warmup bars. Try a shorter period or another interval.');
  const dataSet=completed.slice(Math.max(0,first-60));
- const result=backtest(dataSet,strategy,risk,100000,Math.min(first,60));
+ const result=backtest(dataSet,strategy,risk,sleeveCapital,Math.min(first,60),slots as 2|3);
  // Historical test metrics should correspond to the requested window only: warmup may open positions.
  // v0.4 explicitly reports this approximation until the event loop supports full boundary-reset state.
- return NextResponse.json({symbol,period,interval,source:'Massive adjusted aggregates',bars:completed.slice(first).length,firstBar:new Date(completed[first].time).toISOString(),lastBar:new Date(completed.at(-1)!.time).toISOString(),warmupBars:first,dataCoverage:'Historical indicators may use earlier warmup bars; simulated trades begin in the selected test window.',...result},{headers:{'Cache-Control':'no-store'}});
+ return NextResponse.json({symbol,period,interval,portfolio,corePercent:95,coreLabel:'VOO (reserved, not simulated)',tradingPercent:5,source:'Massive adjusted aggregates',bars:completed.slice(first).length,firstBar:new Date(completed[first].time).toISOString(),lastBar:new Date(completed.at(-1)!.time).toISOString(),warmupBars:first,dataCoverage:'Historical indicators may use earlier warmup bars; simulated trades begin in the selected test window.',...result},{headers:{'Cache-Control':'no-store'}});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Backtest unavailable'}, {status:400,headers:{'Cache-Control':'no-store'}});}
 }

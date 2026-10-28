@@ -3,9 +3,9 @@
 import {useEffect,useState} from 'react';
 import {periods,strategies,intervalAllowed,recommended,type Period,type Interval,type Strategy} from '@/lib/backtest';
 
-type Trade={entered:string;exited:string;profit:number;reason:string};
+type Trade={entered:string;exited:string;entry:number;exit:number;profit:number;reason:string;shares:number;entryCost:number;exitProceeds:number;returnPct:number;stop:number;target:number};
 type Result={
- strategy:string;symbol:string;period:string;interval:string;bars:number;firstBar:string;lastBar:string;
+ strategy:string;symbol:string;period:string;interval:string;bars:number;firstBar:string;lastBar:string;portfolio:number;corePercent:number;coreLabel:string;tradingPercent:number;slots:2|3;tradingSleeveInitial:number;tradingSleeveReturnPct:number;averageTradeReturnPct:number|null;bestTradeReturnPct:number|null;worstTradeReturnPct:number|null;realizedPnl:number;
  source:string;dataCoverage:string;returnPct:number;holdPct:number;closedTrades:number;winRate:number|null;
  profitFactor:number|null;maxDrawdownPct:number;timeInMarketPct:number;trades:Trade[];assumptions:string;
  curve:{time:number;equity:number}[];
@@ -28,6 +28,8 @@ export default function BacktestDesk(){
  const [interval,setInterval]=useState<Interval>('1h');
  const [strategy,setStrategy]=useState<Strategy>('Conservative Swing');
  const [risk,setRisk]=useState(.25);
+ const [portfolio,setPortfolio]=useState(100000);
+ const [slots,setSlots]=useState<2|3>(3);
  const [scanResult,setScanResult]=useState<ScanResult[]|null>(null);
  const [result,setResult]=useState<Result|null>(null);
  const [error,setError]=useState('');
@@ -45,7 +47,7 @@ export default function BacktestDesk(){
    if(busy||onCooldown)return;
    setBusy('test');setError('');setResult(null);
    try{
-     const params=new URLSearchParams({symbol:symbol.trim(),period,interval,strategy,risk:String(risk)});
+     const params=new URLSearchParams({symbol:symbol.trim(),period,interval,strategy,risk:String(risk),portfolio:String(portfolio),slots:String(slots)});
      const response=await fetch('/api/backtest?'+params,{cache:'no-store',headers:{'x-marketclarity-token':token}});
      const data=await response.json();
      if(response.status===429){
@@ -125,10 +127,22 @@ export default function BacktestDesk(){
      <p className="backtestControlHint">Auto-recommended when you change the historical period.</p>
     </div>
     <div className="backtestControl">
-     <label htmlFor="backtestRisk">Risk budget per simulated trade: {risk.toFixed(2)}%</label>
+     <label htmlFor="btPortfolio">Hypothetical total portfolio (USD)</label>
+     <input className="btInput" id="btPortfolio" type="number" min={1000} max={10000000} step={1000} value={portfolio} onChange={e=>setPortfolio(Number(e.target.value))}/>
+     <p className="backtestControlHint">95% core allocation reserved; 5% available for active trading. No VOO shares are simulated.</p>
+    </div>
+    <div className="backtestControl">
+     <label htmlFor="btSlots">Trading positions to reserve</label>
+     <select className="btSelect" id="btSlots" value={slots} onChange={e=>setSlots(Number(e.target.value) as 2|3)}>
+      <option value={2}>2 positions · up to 2.5% each</option><option value={3}>3 positions · up to 1.67% each</option>
+     </select>
+     <p className="backtestControlHint">Per-position capacity for this single-stock test; multi-ticker trading is not simulated yet.</p>
+    </div>
+    <div className="backtestControl">
+     <label htmlFor="backtestRisk">Risk budget per trade: {risk.toFixed(2)}% of trading sleeve</label>
      <input id="backtestRisk" type="range" min=".1" max="1" step=".05" value={risk}
       onChange={e=>setRisk(Number(e.target.value))}/>
-     <p className="backtestControlHint">Position size is also capped at 5% of simulated equity.</p>
+     <p className="backtestControlHint">Risk is based on your 5% trading allocation, not the 95% core.</p>
     </div>
    </div>
    <div className="backtestControl" style={{marginTop:18,maxWidth:620}}>
@@ -142,7 +156,7 @@ export default function BacktestDesk(){
     Relative Strength Rotation needs historical data for multiple stocks. It is not implemented in this preview.
    </div>}
    <div className="backtestActions">
-    <button className="btBtn" disabled={busy!==null||onCooldown||!validSymbol||!token||disabledRotation} onClick={run}>
+    <button className="btBtn" disabled={busy!==null||onCooldown||!validSymbol||!token||disabledRotation||portfolio<1000||portfolio>10000000} onClick={run}>
      {busy==='test'?'Running historical test…':onCooldown?'Provider cooldown active':'Run historical backtest'}
     </button>
     <button className="btBtn secondaryBtn" disabled={busy!==null||onCooldown||!token} onClick={scanWatchlist}>
@@ -166,19 +180,37 @@ export default function BacktestDesk(){
    <h2>{result.symbol} · {result.strategy}</h2>
    <p className="muted">{result.bars} bars in selected period · {new Date(result.firstBar).toLocaleDateString()} – {new Date(result.lastBar).toLocaleDateString()}</p>
    <div className="backtestStats">
-    <div className="backtestStat"><span>Strategy return</span><b>{number(result.returnPct)}%</b></div>
-    <div className="backtestStat"><span>Buy-and-hold comparison</span><b>{number(result.holdPct)}%</b></div>
+    <div className="backtestStat"><span>Average return per completed trade</span><b>{result.averageTradeReturnPct==null?'—':number(result.averageTradeReturnPct)+'%'}</b></div>
+    <div className="backtestStat"><span>Best / worst completed trade</span><b>{result.bestTradeReturnPct==null?'—':number(result.bestTradeReturnPct)+'% / '+number(result.worstTradeReturnPct??0)+'%'}</b></div>
     <div className="backtestStat"><span>Completed trades</span><b>{result.closedTrades}</b></div>
+    <div className="backtestStat"><span>Trading sleeve return</span><b>{number(result.tradingSleeveReturnPct)}%</b></div>
+    <div className="backtestStat"><span>Net realized trading P/L</span><b>{result.realizedPnl.toLocaleString('en-US',{style:'currency',currency:'USD'})}</b></div>
     <div className="backtestStat"><span>Win rate</span><b>{result.winRate==null?'—':number(result.winRate)+'%'}</b></div>
     <div className="backtestStat"><span>Profit factor</span><b>{result.profitFactor==null?'—':number(result.profitFactor)}</b></div>
-    <div className="backtestStat"><span>Maximum drawdown</span><b>{number(result.maxDrawdownPct)}%</b></div>
+    <div className="backtestStat"><span>Trading sleeve max drawdown</span><b>{number(result.maxDrawdownPct)}%</b></div>
+    <div className="backtestStat"><span>AVGO-style buy-and-hold comparison</span><b>{number(result.holdPct)}%</b></div>
    </div>
    <div className="backtestSection">
-    <h3>Recent simulated trade exits</h3>
-    {!result.trades.length?<p>No completed trades for this test. An empty trade sample cannot validate a strategy.</p>:
-     result.trades.slice(0,15).map((t,i)=><p key={i}>
-      {new Date(t.exited).toLocaleDateString()} · {t.reason} · {t.profit.toFixed(2)} simulated P/L
-     </p>)}
+    <h3>Allocation used for this test</h3>
+    <p><strong>{(result.portfolio*.95).toLocaleString('en-US',{style:'currency',currency:'USD'})}</strong> reserved as 95% VOO core (not purchased or price-tested); <strong>{result.tradingSleeveInitial.toLocaleString('en-US',{style:'currency',currency:'USD'})}</strong> simulated trading sleeve; <strong>{result.slots}</strong> reserved position slots.</p>
+    <p>Each simulated entry is limited to one of {result.slots} trading slots and the risk budget. The current engine tests one ticker at a time; it does not yet coordinate overlapping trades across two or three different stocks.</p>
+   </div>
+   <div className="backtestSection">
+    <h3>Every completed simulated trade</h3>
+    {!result.trades.length?<p>No completed trades; average and best/worst trade returns are intentionally blank.</p>:
+    <div className="tableWrap"><table>
+      <thead><tr><th>Entry date</th><th>Buy price</th><th>Sell date</th><th>Sell price</th><th>Shares</th><th>Net trade return</th><th>Net P/L</th><th>Stop / target</th><th>Exit reason</th></tr></thead>
+      <tbody>{result.trades.map((t,i)=><tr key={i}>
+       <td>{new Date(t.entered).toLocaleString()}</td><td>{t.entry.toFixed(2)}</td>
+       <td>{new Date(t.exited).toLocaleString()}</td><td>{t.exit.toFixed(2)}</td>
+       <td>{t.shares}</td>
+       <td style={{color:t.returnPct>=0?'#4bd49f':'#ff7d86',fontWeight:800}}>{t.returnPct>=0?'+':''}{number(t.returnPct)}%</td>
+       <td>{t.profit.toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
+       <td>{t.stop.toFixed(2)} / {t.target.toFixed(2)}</td>
+       <td>{t.reason}</td>
+      </tr>)}</tbody>
+    </table></div>}
+    <p className="backtestInfo">Trade return = net exit proceeds minus entry cost, divided by entry cost. Net profits include estimated entry and exit friction. Unrealized open positions affect sleeve return, not completed-trade averages.</p>
    </div>
    <p className="backtestInfo">{result.assumptions} {result.dataCoverage} Prototype results are exploratory and not a verified trading edge.</p>
   </section>}

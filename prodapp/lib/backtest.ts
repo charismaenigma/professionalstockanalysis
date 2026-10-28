@@ -32,10 +32,13 @@ export function signal(a:Candle[],i:number,s:Strategy):Signal {
  case 'Relative Strength Rotation':return {enter:false,exit:false}; // requires historical comparison universe; not silently approximated
  }
 }
-export type Fill={entered:string;exited:string;entry:number;exit:number;profit:number;reason:string};
-export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=100000,startAt=20){
+export type Fill={entered:string;exited:string;entry:number;exit:number;profit:number;reason:string;shares:number;entryCost:number;exitProceeds:number;returnPct:number;stop:number;target:number};
+export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=5000,startAt=20,slots:2|3=3){
  if(strategy==='Relative Strength Rotation')throw new Error('Relative Strength Rotation requires synchronized multi-asset history and is not yet implemented.');
  if(candles.length<25||startAt>=candles.length)throw new Error('Insufficient bars: at least 25 completed candles are required.');
+ if(!Number.isFinite(initial)||initial<=0)throw new Error('Invalid simulation trading sleeve');
+ if(![2,3].includes(slots))throw new Error('Choose two or three trading slots');
+ if(!Number.isFinite(riskPct)||riskPct<.1||riskPct>1)throw new Error('Invalid risk percentage');
  const cash0=initial;let cash=initial,shares=0,entry=0,entryTime='',stop=0,target=0,cost=0,peak=initial,maxDD=0,exposure=0;
  const trades:Fill[]=[];const curve:{time:number;equity:number}[]=[]; const feeBps=10;
  // signal on prior completed bar; orders fill no earlier than NEXT bar open; exit stop-first on ambiguous candles
@@ -47,14 +50,17 @@ export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=
    else if(b.low<=stop){out=stop;why='stop';}else if(b.high>=target){out=target;why='target';}
    else if(sig.exit){out=b.open;why='signal';}
    if(out>0){const proceeds=shares*out*(1-feeBps/10000);cash+=proceeds;const profit=proceeds-cost;
-    trades.push({entered:entryTime,exited:new Date(b.time).toISOString(),entry,exit:out,profit:Math.round(profit*100)/100,reason:why});
+    trades.push({entered:entryTime,exited:new Date(b.time).toISOString(),entry,exit:out,profit:Math.round(profit*100)/100,reason:why,shares,entryCost:Math.round(cost*100)/100,exitProceeds:Math.round(proceeds*100)/100,returnPct:profit/cost*100,stop,target});
     shares=0;cost=0;}
   }
   if(!shares&&sig.enter&&i<candles.length-1){
    const volatility=atr(candles,i-1);
    const dist=Number.isFinite(volatility)&&volatility>0?volatility*1.5:prev.close*.025;
    const ask=b.open*(1+feeBps/10000);
-   const qty=Math.floor(Math.min(initial*riskPct/100/dist,cash*.05/ask,cash*.70/ask));
+   // Risk is a percentage of the *trading sleeve*, not the reserved 95% core.
+   // Each ticker is capped at one of 2/3 concurrent-position slots (this single-symbol engine does not model other symbols).
+   const currentSleeveEquity=cash+shares*b.open;
+   const qty=Math.floor(Math.min(currentSleeveEquity*riskPct/100/dist,currentSleeveEquity/slots/ask,cash*.70/ask));
    if(qty>0&&ask>dist){shares=qty;entry=ask;entryTime=new Date(b.time).toISOString();stop=Math.max(.01,Math.round((ask-dist)*100)/100);target=Math.round((ask+2*dist)*100)/100;cost=qty*ask;cash-=cost;}
   }
   const equity=cash+shares*b.close;peak=Math.max(peak,equity);maxDD=Math.max(maxDD,(peak-equity)/peak*100);
@@ -63,8 +69,16 @@ export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=
  const last=candles[candles.length-1];const equity=cash+shares*last.close;
  const wins=trades.filter(t=>t.profit>0),losses=trades.filter(t=>t.profit<0);
  const gp=wins.reduce((a,t)=>a+t.profit,0),gl=-losses.reduce((a,t)=>a+t.profit,0);
- return {strategy,initial,equity,returnPct:(equity/cash0-1)*100,holdPct:(last.close/candles[Math.max(20,startAt)].open-1)*100,
+ const tradeReturns=trades.map(t=>t.returnPct);
+ const avgTradeReturnPct=tradeReturns.length?avg(tradeReturns):null;
+ const bestTradeReturnPct=tradeReturns.length?Math.max(...tradeReturns):null;
+ const worstTradeReturnPct=tradeReturns.length?Math.min(...tradeReturns):null;
+ const realizedPnl=trades.reduce((sum,t)=>sum+t.profit,0);
+ return {strategy,initial,equity,slots,tradingSleeveInitial:initial,tradingSleeveReturnPct:(equity/cash0-1)*100,
+  averageTradeReturnPct:avgTradeReturnPct,bestTradeReturnPct,worstTradeReturnPct,realizedPnl:Math.round(realizedPnl*100)/100,
+  returnPct:(equity/cash0-1)*100,holdPct:(last.close/candles[Math.max(20,startAt)].open-1)*100,
   closedTrades:trades.length,winRate:trades.length?wins.length/trades.length*100:null,profitFactor:gl>0?gp/gl:null,
   maxDrawdownPct:maxDD,timeInMarketPct:exposure/Math.max(1,curve.length)*100,openPosition:shares>0,
-  trades:trades.slice(-50).reverse(),curve,assumptions:'Historical simulation only. Next-bar entries, 10 bps entry and exit friction, 5% max allocation, 0.25% default equity-risk budget; intrabar stops execute at stop unless gapped. No shorting or live orders.'};
+  trades:trades.reverse(),curve,
+  assumptions:'Historical single-ticker simulation only: entries at next bar open, 10 bps price friction on entry and exit; risk budget is based on the trading sleeve, with a per-position cap of one of '+slots+' slots. Intrabar stop-loss takes precedence over target; overnight gaps may exceed stops. No simultaneous multi-ticker backtest, VOO price series, tax modeling, shorting, or live brokerage orders.'};
 }
