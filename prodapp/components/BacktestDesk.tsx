@@ -34,7 +34,7 @@ export default function BacktestDesk(){
  const [busy,setBusy]=useState<'test'|'scan'|null>(null);
  const [retryUntil,setRetryUntil]=useState(0);
  const [now,setNow]=useState(0);
- useEffect(()=>{if(!retryUntil)return;setNow(Date.now());const handle=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(handle);},[retryUntil]);
+ useEffect(()=>{if(!retryUntil)return;setNow(Date.now());const handle=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(handle);},[retryUntil]);
  const remaining=Math.max(0,Math.ceil((retryUntil-now)/1000));
  const onCooldown=retryUntil>0&&remaining>0;
  const supported=intervalAllowed[period];
