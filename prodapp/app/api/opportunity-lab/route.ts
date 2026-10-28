@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {controlAuthorized,unauthorized} from '@/lib/paper/security';
 import {rankCandidates,auditCandidates,SCREENER_VERSION,type DailyBar,type ScreenerMode} from '@/lib/opportunity-lab';
+import {comparePrices,reviewWindow,type ReviewHorizon} from '@/lib/benchmark-tracker';
 export const runtime='nodejs';export const dynamic='force-dynamic';export const maxDuration=60;
 const dayMs=86400000;
 function iso(d:Date){return d.toISOString().slice(0,10);}
@@ -29,6 +30,8 @@ export async function GET(req:NextRequest){
  const qs=req.nextUrl.searchParams;
  const date=qs.get('date')||weekdayBefore(nyDate());
  const mode=(qs.get('mode')||'day') as ScreenerMode;
+ const horizon=(qs.get('horizon')||'1d') as ReviewHorizon;
+ if(!['1d','1w','1m'].includes(horizon))throw new ScreenerError('Choose 1 day, 1 week, or 1 month for performance review.');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||iso(new Date(date+'T12:00:00.000Z'))!==date)
    throw new ScreenerError('Use a valid YYYY-MM-DD session date.');
  if(mode!=='day'&&mode!=='swing')throw new ScreenerError('Choose day or swing mode.');
@@ -43,19 +46,35 @@ export async function GET(req:NextRequest){
  const top=model.all.slice(0,10);
  // NEVER access target session data when it is today. This separates selection-time inputs from outcomes.
  const audited=date<today;
- let audit=null;
- if(audited){const targetBars=await grouped(date);
+ let audit=null,benchmarks=null;
+ if(audited){
+  const targetBars=await grouped(date);
   if(!targetBars.length)throw new ScreenerError('No completed market-session bars are available for this date; it may have been a holiday.');
   audit=auditCandidates(model.all,targetBars,model.discarded,10);
+  const lastCompleted=weekdayBefore(today);
+  const window=reviewWindow(date,horizon,lastCompleted);
+  // One grouped result per end date, rather than individual calls for 12 ETFs and 10 stocks.
+  // If horizon remains in the future, clearly mark the observed window as partial.
+  if(window.end){
+   const endBars=window.end===date?targetBars:await grouped(window.end);
+   if(!endBars.length)throw new ScreenerError('No grouped market data exists for the review end date '+window.end+'. It may be a market holiday; try another window.');
+   const missed=audit.missed.map(x=>({ticker:x.ticker}));
+   benchmarks={...comparePrices([...top,...missed],targetBars,endBars,window.end),
+     horizon,requestedEnd:window.requestedEnd,complete:window.complete,
+     observedSessionStart:date,
+     status:window.complete?'Complete historical window':'Partial historical window; future sessions have not occurred'};
+  }
  }
  return NextResponse.json({
   modelVersion:SCREENER_VERSION,requestedSession:date,selectionAsOf:prev,baselineDate:older,
-  mode,scanUniverse:model.eligibleCount,selected:top,audit,
+  mode,horizon,scanUniverse:model.eligibleCount,selected:top,audit,benchmarks,
   preSessionBasis:'Ranked using '+older+' and '+prev+' completed daily price/volume bars only.',
   limitations:['Candidate universe is not yet verified as common shares; ETFs and other symbols may be present.',
    'Only two prior sessions are available to this early-stage ranking model; this is not a full trend/relative-volume screener.',
    'No historical opportunity list is persisted or time-stamped before the session. This is deterministic replay, NOT verified forward prediction.',
    'Day and swing modes rank candidates for study; neither mode executes the named intraday or swing strategy.',
+   'Benchmarks and stock tracking show open-to-close price change over matched periods, NOT actual trade fills, portfolio returns, or dividend-adjusted ETF total returns.',
+   'VOO tracks the S&P 500, not the entire US equity universe. This prototype does not verify which specific sector each screened company belongs to.',
    'Audit open-to-close moves are not actual profit/loss or backtested strategy fills.','Screens and audit results do not auto-update model weights.']
  },{headers:{'Cache-Control':'private, no-store'}});
  }catch(e){const status=e instanceof ScreenerError?e.status:502;

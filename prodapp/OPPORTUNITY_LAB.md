@@ -11,3 +11,8 @@ Data: Massive Grouped Daily bars, 3 calls maximum if no missing sessions, cached
 
 ## Integration check · 2026-10-26
 The temporary Preview diagnostic successfully loaded grouped US stock data for 2026-10-22, 2026-10-23 and 2026-10-26; the point-in-time candidate filter found 2,574 eligible symbols and ranked 10, capturing 1 of the top 20 retrospectively observed liquid movers. This is a single-day non-tradable replay, not an out-of-sample result or probability. The diagnostic page was removed after verification.
+
+## ETF benchmark monitoring v0.2
+A matched historical review period starts at the selected stock screening session OPEN and ends at the most recent eligible closed trading session within 1 day, 1 week or 1 month, clamped to completed data. The same open-to-close interval is applied to the screened stocks AND VOO plus all eleven Select Sector SPDR ETFs. All ETF rows appear even if a price is missing (null/—), never fabricated. The data uses Massive split-adjusted grouped bars; ETF dividend distributions are NOT included in these price returns. Excess return vs VOO is in percentage points, not absolute portfolio gains. Results are hindsight observed moves, not executable backtested positions or simulated P/L.
+
+Watchlist screen entries are saved in the same browser using localStorage in the UI; they do NOT persist to cloud storage or automatically update when the browser is closed. Saved entries can be revisited from their original screening date to see how they compare over newer windows. User credentials are never stored locally.
