@@ -79,6 +79,11 @@ export function backtest(candles:Candle[],strategy:Strategy,riskPct=.25,initial=
   returnPct:(equity/cash0-1)*100,holdPct:(last.close/candles[Math.max(20,startAt)].open-1)*100,
   closedTrades:trades.length,winRate:trades.length?wins.length/trades.length*100:null,profitFactor:gl>0?gp/gl:null,
   maxDrawdownPct:maxDD,timeInMarketPct:exposure/Math.max(1,curve.length)*100,openPosition:shares>0,
+  openTrade:shares>0?{
+    entered:entryTime,entry,stop,target,shares,lastPrice:last.close,
+    unrealizedPnl:Math.round((shares*last.close-cost)*100)/100,
+    unrealizedReturnPct:(shares*last.close-cost)/cost*100,
+  }:null,
   trades:trades.reverse(),curve,
   assumptions:'Historical single-ticker simulation only: entries at next bar open, 10 bps price friction on entry and exit; risk budget is based on the trading sleeve, with a per-position cap of one of '+slots+' slots. Intrabar stop-loss takes precedence over target; overnight gaps may exceed stops. No simultaneous multi-ticker backtest, VOO price series, tax modeling, shorting, or live brokerage orders.'};
 }

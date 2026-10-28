@@ -9,6 +9,7 @@ type Result={
  source:string;dataCoverage:string;returnPct:number;holdPct:number;closedTrades:number;winRate:number|null;
  profitFactor:number|null;maxDrawdownPct:number;timeInMarketPct:number;trades:Trade[];assumptions:string;
  curve:{time:number;equity:number}[];
+ openPosition:boolean;openTrade:{entered:string;entry:number;stop:number;target:number;shares:number;lastPrice:number;unrealizedPnl:number;unrealizedReturnPct:number}|null;
 };
 type ScanResult={symbol:string;score:number|null;status:string;reason:string};
 const names:Record<Period,string>={
@@ -19,6 +20,11 @@ const intervalNames:Record<Interval,string>={
  '5m':'5 minutes','15m':'15 minutes','30m':'30 minutes','1h':'Hourly','1d':'Daily','1w':'Weekly'
 };
 const number=(n:number)=>Number.isFinite(n)?n.toFixed(2):'—';
+const fmtMarketTime=(iso:string, interval:string)=>{
+ const daily=interval==='1d'||interval==='1w';
+ return new Date(iso).toLocaleString('en-US',{timeZone:daily?'UTC':'America/New_York',
+  year:'numeric',month:'short',day:'numeric',...(daily?{}:{hour:'numeric',minute:'2-digit'})});
+};
 
 export default function BacktestDesk(){
  const [token,setToken]=useState('');
@@ -178,7 +184,7 @@ export default function BacktestDesk(){
   {result&&<section className="panel">
    <span className="eyebrow">Historical simulation · {result.source}</span>
    <h2>{result.symbol} · {result.strategy}</h2>
-   <p className="muted">{result.bars} bars in selected period · {new Date(result.firstBar).toLocaleDateString()} – {new Date(result.lastBar).toLocaleDateString()}</p>
+   <p className="muted">{result.bars} bars in selected period · {fmtMarketTime(result.firstBar,result.interval)} – {fmtMarketTime(result.lastBar,result.interval)}</p>
    <div className="backtestStats">
     <div className="backtestStat"><span>Average return per completed trade</span><b>{result.averageTradeReturnPct==null?'—':number(result.averageTradeReturnPct)+'%'}</b></div>
     <div className="backtestStat"><span>Best / worst completed trade</span><b>{result.bestTradeReturnPct==null?'—':number(result.bestTradeReturnPct)+'% / '+number(result.worstTradeReturnPct??0)+'%'}</b></div>
@@ -188,21 +194,27 @@ export default function BacktestDesk(){
     <div className="backtestStat"><span>Win rate</span><b>{result.winRate==null?'—':number(result.winRate)+'%'}</b></div>
     <div className="backtestStat"><span>Profit factor</span><b>{result.profitFactor==null?'—':number(result.profitFactor)}</b></div>
     <div className="backtestStat"><span>Trading sleeve max drawdown</span><b>{number(result.maxDrawdownPct)}%</b></div>
-    <div className="backtestStat"><span>AVGO-style buy-and-hold comparison</span><b>{number(result.holdPct)}%</b></div>
+    <div className="backtestStat"><span>Buy and hold {result.symbol} (not VOO)</span><b>{number(result.holdPct)}%</b></div>
    </div>
    <div className="backtestSection">
     <h3>Allocation used for this test</h3>
     <p><strong>{(result.portfolio*.95).toLocaleString('en-US',{style:'currency',currency:'USD'})}</strong> reserved as 95% VOO core (not purchased or price-tested); <strong>{result.tradingSleeveInitial.toLocaleString('en-US',{style:'currency',currency:'USD'})}</strong> simulated trading sleeve; <strong>{result.slots}</strong> reserved position slots.</p>
     <p>Each simulated entry is limited to one of {result.slots} trading slots and the risk budget. The current engine tests one ticker at a time; it does not yet coordinate overlapping trades across two or three different stocks.</p>
    </div>
+   {result.openTrade&&<div className="backtestSection">
+     <h3>Still-open hypothetical position (not a completed trade)</h3>
+     <p>{result.openTrade.shares} shares · entered {fmtMarketTime(result.openTrade.entered,result.interval)} at {result.openTrade.entry.toFixed(2)} · last historical close {result.openTrade.lastPrice.toFixed(2)}.</p>
+     <p>Stop: {result.openTrade.stop.toFixed(2)} · take-profit target: {result.openTrade.target.toFixed(2)} · unrealized return {number(result.openTrade.unrealizedReturnPct)}% · unrealized P/L {result.openTrade.unrealizedPnl.toLocaleString('en-US',{style:'currency',currency:'USD'})}.</p>
+     <p className="backtestInfo">The open position is marked to the last historical close, before estimated future exit friction. It is included in trading-sleeve return but not the completed-trade win rate or average.</p>
+   </div>}
    <div className="backtestSection">
     <h3>Every completed simulated trade</h3>
     {!result.trades.length?<p>No completed trades; average and best/worst trade returns are intentionally blank.</p>:
     <div className="tableWrap"><table>
       <thead><tr><th>Entry date</th><th>Buy price</th><th>Sell date</th><th>Sell price</th><th>Shares</th><th>Net trade return</th><th>Net P/L</th><th>Stop / target</th><th>Exit reason</th></tr></thead>
       <tbody>{result.trades.map((t,i)=><tr key={i}>
-       <td>{new Date(t.entered).toLocaleString()}</td><td>{t.entry.toFixed(2)}</td>
-       <td>{new Date(t.exited).toLocaleString()}</td><td>{t.exit.toFixed(2)}</td>
+       <td>{fmtMarketTime(t.entered,result.interval)}</td><td>{t.entry.toFixed(2)}</td>
+       <td>{fmtMarketTime(t.exited,result.interval)}</td><td>{t.exit.toFixed(2)}</td>
        <td>{t.shares}</td>
        <td style={{color:t.returnPct>=0?'#4bd49f':'#ff7d86',fontWeight:800}}>{t.returnPct>=0?'+':''}{number(t.returnPct)}%</td>
        <td>{t.profit.toLocaleString('en-US',{style:'currency',currency:'USD'})}</td>
