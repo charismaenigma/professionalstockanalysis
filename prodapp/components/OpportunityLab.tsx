@@ -62,7 +62,7 @@ export default function OpportunityLab(){
   <section className="panel">
    <span className="eyebrow">Daily research · Historical tracking</span>
    <h1>See the stocks. See the whole market.</h1>
-   <p className="muted">Compare each screener selection with the S&P 500 benchmark (VOO) and all 11 sector ETFs over matching historical dates. Track noteworthy stocks and revisit their original screening session.</p>
+   <p className="muted">Compare each screener selection with the S&P 500 (VOO), total US stock market (VTI), and all 11 sector ETFs over matching historical dates. Track noteworthy stocks and revisit their original screening session.</p>
    <div className="backtestControls" style={{marginTop:22}}>
     <div className="backtestControl"><label htmlFor="opToken">Private preview token</label>
      <input className="btInput" type="password" autoComplete="off" id="opToken" value={token} onChange={e=>setToken(e.target.value)} placeholder="Your Preview token"/></div>
@@ -105,10 +105,11 @@ export default function OpportunityLab(){
     {!result.benchmarks.complete?' · Full requested window ends '+result.benchmarks.requestedEnd:''}</span>
    </div>}
    <div className="backtestSection">
-    <div className="opSectionHeading"><div><h3>All benchmarks · VOO + 11 sectors</h3><p>Every ETF appears, even when historical data is missing.</p></div><span className="opMiniCount">12 ETFs</span></div>
+    <div className="opSectionHeading"><div><h3>All benchmarks · VOO, VTI + 11 sectors</h3><p>Every ETF appears, even when historical data is missing.</p></div><span className="opMiniCount">13 ETFs</span></div>
     <div className="tableWrap"><table className="opportunityTable opBenchTable"><thead><tr><th>ETF</th><th>Market / sector</th><th>Start open</th><th>End close</th><th>Price change</th><th>vs. VOO</th></tr></thead><tbody>
      {(benchmarkSort.length?benchmarkSort:[
        {ticker:'VOO',sector:'S&P 500 — primary market benchmark'},
+       {ticker:'VTI',sector:'Total US stock market — broad-market benchmark'},
        {ticker:'XLK',sector:'Technology'},{ticker:'XLC',sector:'Communication Services'},
        {ticker:'XLE',sector:'Energy'},{ticker:'XLF',sector:'Financials'},
        {ticker:'XLV',sector:'Health Care'},{ticker:'XLI',sector:'Industrials'},
@@ -123,7 +124,7 @@ export default function OpportunityLab(){
        <td style={{color:tone(x.vsVooPctPoints)}}>{x.ticker==='VOO'?'Baseline':x.vsVooPctPoints==null?'—':fmtPct(x.vsVooPctPoints)+' pts'}</td>
       </tr>)}
     </tbody></table></div>
-    <p className="backtestInfo">VOO represents the S&P 500, not the entire US stock market. Sector ETFs represent S&P 500 sectors. Prices are split-adjusted, but ETF distributions/dividends, fees and taxes are excluded.</p>
+    <p className="backtestInfo">VOO tracks the S&P 500; VTI tracks the broader US stock market. The 11 sector funds represent S&P 500 sectors. Prices are split-adjusted, but ETF distributions/dividends, fees and taxes are excluded.</p>
    </div>
    <div className="backtestSection">
     <div className="opSectionHeading"><div><h3>Screened stocks · matched performance</h3>

@@ -19,3 +19,6 @@ Watchlist screen entries are saved in the same browser using localStorage in the
 
 ## Grouped ETF integration verification · 2026-10-27
 Preview-only read-only diagnostic confirmed all 12 requested ETFs (VOO and the 11 sector ETFs) were present with paired historical OHLC data for Oct 22 and Oct 26, 2026. Comparison returned VOO -0.14%, XLK +0.75%, and valid paired data for AVGO and SOFI. These are reference-period *price* changes, not total returns or backtested trading P/L. Temporary diagnostic route was removed after verification.
+
+## Broader market reference
+VTI joins VOO and the 11 S&P 500 sector funds as the thirteenth benchmark. VOO remains the primary relative-return baseline (vs VOO percentage points); VTI provides a distinct broad-US-stock-market comparison. All 13 ETF rows must appear regardless of provider data availability.

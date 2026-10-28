@@ -5,6 +5,7 @@ import type {DailyBar,Candidate} from './opportunity-lab';
  */
 export const BENCHMARKS=[
  {ticker:'VOO',sector:'S&P 500 — primary market benchmark'},
+ {ticker:'VTI',sector:'Total US stock market — broad-market benchmark'},
  {ticker:'XLK',sector:'Technology'},
  {ticker:'XLC',sector:'Communication Services'},
  {ticker:'XLE',sector:'Energy'},
