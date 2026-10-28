@@ -28,6 +28,7 @@ export interface PaperOrder {
   side: 'buy' | 'sell';
   type: string;
   status: string;
+  limit_price?: string | null;
   created_at: string;
   filled_avg_price?: string | null;
   filled_qty?: string;

@@ -5,6 +5,7 @@ import {
   type PaperAccount, type PaperPosition, type PaperOrder, type PaperFill, type PaperHistory,
 } from '@/lib/paper/alpaca';
 import {controlAuthorized, unauthorized} from '@/lib/paper/security';
+import {calculatePaperBudget,positionSlots} from '@/lib/paper/risk';
 import {reconstructTrades, summarizeTrades, equityCurve, maxDrawdown} from '@/lib/paper/metrics';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,8 +29,11 @@ export async function GET(request: NextRequest) {
     const curve = equityCurve(history);
     const closed = reconstructTrades(fills);
     const summary = summarizeTrades(closed);
+    const budget=calculatePaperBudget(account,positions,
+      orders.filter(o=>o.side==='buy'&&['new','accepted','pending_new','partially_filled','held'].includes(o.status)),
+      positionSlots());
     return NextResponse.json({
-      flags, account: {status: account.status, equity: Number(account.equity),
+      flags,budget,trades:closed.slice(-20).reverse(),account: {status: account.status, equity: Number(account.equity),
         cash: Number(account.cash), lastEquity: Number(account.last_equity)},
       positions, orders: orders.slice(0,25), watchlist: watchlist.symbols,
       history: curve,
