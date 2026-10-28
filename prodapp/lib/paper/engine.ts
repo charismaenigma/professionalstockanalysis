@@ -99,7 +99,12 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
       }
       const draft = decision.order;
       if (!execute) {
-        result.events.push({symbol, outcome: 'candidate', message: 'Preview only. No order sent. Proposed limit 
+        result.events.push({symbol,outcome:'candidate',
+          message:'Preview only. Entry '+draft.limit.toFixed(2)+
+          ', stop '+draft.stop.toFixed(2)+', target '+draft.target.toFixed(2)+
+          '. No order sent.',score:draft.score,qty:draft.qty});
+        continue;
+      }
       // The endpoint is hard-coded to Alpaca PAPER. No live broker endpoint exists.
       await paperPost<PaperOrder>('/v2/orders', {
         symbol, qty: String(draft.qty), side: 'buy', type: 'limit',
