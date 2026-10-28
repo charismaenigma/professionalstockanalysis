@@ -311,3 +311,12 @@ h3{font-size:22px;margin:5px 0 12px}
 .backtestLab .backtestEmpty strong{color:var(--text)}
 @media(max-width:900px){.backtestLab .backtestControls{grid-template-columns:repeat(2,minmax(0,1fr))}.backtestLab .backtestStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:630px){.backtestLab .backtestControls,.backtestLab .backtestStats{grid-template-columns:1fr}.backtestLab .backtestIntro,.backtestLab .backtestPrivacy{flex-direction:column;align-items:stretch}.backtestLab .backtestPrivacyInput{width:100%}.backtestLab .btBtn{width:100%}.backtestLab .backtestActions{flex-direction:column;align-items:stretch}}
+
+/* Point-in-time opportunity replay */
+.opportunityLab .panel h1{font-size:clamp(28px,3vw,42px);letter-spacing:-.03em;margin:8px 0 12px}
+.opportunityLab .panel>p.muted{max-width:850px}
+.opportunityLab .opportunityTable{min-width:850px}
+.opportunityLab .opportunityTable td,.opportunityLab .opportunityTable th{text-align:right}
+.opportunityLab .opportunityTable td:first-child,.opportunityLab .opportunityTable th:first-child,
+.opportunityLab .opportunityTable td:nth-child(2),.opportunityLab .opportunityTable th:nth-child(2){text-align:left}
+.opportunityLab .backtestStat b{font-size:23px}

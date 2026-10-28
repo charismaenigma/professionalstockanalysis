@@ -1,0 +1,1 @@
+import OpportunityLab from '@/components/OpportunityLab';export const metadata={title:'Adaptive Opportunity Lab — MarketClarity',description:'Research-only pre-session stock screening and after-close missed opportunity replay.'};export default function Page(){return <OpportunityLab/>;}
