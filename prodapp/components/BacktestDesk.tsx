@@ -23,6 +23,7 @@ const number=(n:number)=>Number.isFinite(n)?n.toFixed(2):'—';
 export default function BacktestDesk(){
  const [token,setToken]=useState('');
  const [symbol,setSymbol]=useState('');
+ const [watchlist,setWatchlist]=useState('');
  const [period,setPeriod]=useState<Period>('1m');
  const [interval,setInterval]=useState<Interval>('1h');
  const [strategy,setStrategy]=useState<Strategy>('Conservative Swing');
@@ -50,7 +51,7 @@ export default function BacktestDesk(){
  async function scanWatchlist(){
    setBusy('scan');setError('');setScanResult(null);
    try{
-     const response=await fetch('/api/backtest/scan',{headers:{'x-marketclarity-token':token},cache:'no-store'});
+     const response=await fetch('/api/backtest/scan'+(watchlist.trim()?'?symbols='+encodeURIComponent(watchlist):''),{headers:{'x-marketclarity-token':token},cache:'no-store'});
      const data=await response.json();
      if(!response.ok)throw Error(data.error||'Could not scan watchlist.');
      setScanResult(data.results as ScanResult[]);
@@ -118,6 +119,13 @@ export default function BacktestDesk(){
      <p className="backtestControlHint">Position size is also capped at 5% of simulated equity.</p>
     </div>
    </div>
+   <div className="backtestControl" style={{marginTop:18,maxWidth:620}}>
+    <label htmlFor="backtestWatchlist">After-hours scan tickers (optional)</label>
+    <input className="btInput" id="backtestWatchlist" value={watchlist}
+     placeholder="SOFI, PYPL, GLXY, CLS, AVGO"
+     onChange={e=>setWatchlist(e.target.value.toUpperCase())}/>
+    <p className="backtestControlHint">Enter up to five tickers separated by commas. Leave blank to read your connected Alpaca paper watchlist.</p>
+   </div>
    {disabledRotation&&<div className="warningBar" style={{marginTop:16}}>
     Relative Strength Rotation needs historical data for multiple stocks. It is not implemented in this preview.
    </div>}
@@ -126,10 +134,10 @@ export default function BacktestDesk(){
      {busy==='test'?'Running historical test…':'Run historical backtest'}
     </button>
     <button className="btBtn secondaryBtn" disabled={busy!==null||!token} onClick={scanWatchlist}>
-     {busy==='scan'?'Scanning watchlist…':'Scan paper watchlist'}
+     {busy==='scan'?'Scanning watchlist…':'Scan selected stocks'}
     </button>
    </div>
-   <p className="backtestInfo">After-hours scanning uses the latest available data, not live executable quotes. Watchlist scans also require your paper broker connection.</p>
+   <p className="backtestInfo">After-hours scanning uses the latest available data, not live executable quotes. Enter tickers above to scan without a broker connection; leaving them blank requires Alpaca paper credentials.</p>
    {error&&<div className="error backtestError" role="alert">{error}</div>}
   </section>
   {scanResult&&<section className="panel">
