@@ -62,7 +62,7 @@ export function auditCandidates(
  // Include big liquid movers that were unranked, so the "missed" table can explain filtering failures.
  const auditedUniverse=[...observations.values()].filter(x=>{
   const b=outcome.get(x.ticker)!;
-  return /^[A-Z]{1,5}(?:\\.[A-Z])?$/.test(x.ticker)
+  return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(x.ticker)
    &&b.close>=5&&b.close<=1000&&b.volume>=500000&&b.close*b.volume>=10000000;
  }).sort((a,b)=>b.openToClosePct-a.openToClosePct||a.ticker.localeCompare(b.ticker));
  const leaders=auditedUniverse.slice(0,20);
