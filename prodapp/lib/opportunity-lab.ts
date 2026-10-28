@@ -77,7 +77,6 @@ export function auditCandidates(
  const observed=observedPicks.filter(x=>x.observed!=null).map(x=>x.observed!);
  const positives=observed.filter(x=>x.openToClosePct>0).length;
  const equalAverage=(xs:number[])=>xs.length?round(xs.reduce((a,b)=>a+b,0)/xs.length):null;
- const missedTotal=bestEligible.filter(x=>!picked.has(x.ticker)&&x.openToClosePct>0).length;
  return {observedPicks,missed,capturedLeaders:captured.length,leaderCount:leaders.length,
   observedPickCount:observed.length,positiveMoveCount:positives,observedPositiveRate:observed.length?round(positives/observed.length*100):null,
   averageOpenToClosePct:equalAverage(observed.map(x=>x.openToClosePct)),missedPositiveEligibleCount:missedTotal,
