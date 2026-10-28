@@ -390,3 +390,38 @@ h3{font-size:22px;margin:5px 0 12px}
 .paperPreflightRow{border:1px solid #354e69;border-radius:10px;background:#101e30;padding:11px 12px}
 .paperPreflightRow span{font-size:13px;font-weight:800;text-transform:capitalize}.paperPreflightRow p{font-size:12px;color:#a7bdcf;line-height:1.45;margin:6px 0 0}
 .paperPreflight-pass span{color:#5bd9ae}.paperPreflight-warning span{color:#f8d489}.paperPreflight-block span{color:#f7a0a5}
+
+/* Premarket research: high density, explicit data provenance and freshness */
+.preMarketDesk{margin-top:20px}.preHero h1{font-size:clamp(25px,4vw,35px);margin:4px 0 8px}
+.preHero>p{max-width:950px}.preSecurity{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:22px 0}
+.preSecurity label{font-size:13px;font-weight:700}.preSecurity input{min-width:265px;background:#091829;color:#e3f2ff;border:1px solid #35516c;border-radius:9px;padding:11px}
+.preSecurity span{font-size:12px;color:#829bb5}.prePhases{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:18px 0 25px}
+.prePhase{border:1px solid #36516a;border-radius:14px;padding:17px;background:#0d2033;display:flex;flex-direction:column;gap:9px}
+.prePhase>span{font-size:12px;color:#86dec8;font-weight:700}.prePhase h2{font-size:18px;margin:0;color:#ecf8ff}
+.prePhase p{font-size:13px;color:#a7c0d5;flex:1;line-height:1.5;margin:0}.prePhase button,.preArchiveButtons button{padding:11px;background:#194d48;color:#e3fff3;border:1px solid #369785;border-radius:9px;font-weight:700;cursor:pointer}
+.prePhase button:disabled,.preArchiveButtons button:disabled{opacity:.5;cursor:not-allowed}
+.preHeading{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;margin:19px 0 12px}
+.preHeading h2,.preSectionTitle{font-size:21px;margin:0 0 5px}
+.preHeading a{font-size:12px;color:#c2ffe3;border:1px solid #367e67;background:#12362f;border-radius:8px;padding:10px 12px;font-weight:700}
+.preWarnings{background:#292319;border:1px solid #66543b;padding:12px 16px;border-radius:10px;color:#f1d69f;margin:15px 0}
+.preWarnings p{font-size:12px;margin:7px 0}.preNotice{color:#abf8d1;border:1px solid #38795c;border-radius:9px;padding:10px}
+.preMetrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.preMetrics div{padding:14px;background:#0d1d2f;border:1px solid #2a4766;border-radius:10px;display:flex;flex-direction:column;gap:6px}
+.preMetrics span{font-size:12px;color:#9eb6c9}.preMetrics strong{font-size:24px}
+.preScroll{overflow-x:auto;border:1px solid #32506b;border-radius:11px;margin:12px 0 25px}
+.preTable{width:100%;border-collapse:collapse;min-width:970px}
+.preTable td,.preTable th{padding:10px 11px;border-bottom:1px solid #20374e;text-align:right;font-size:12px;white-space:nowrap}
+.preTable th{color:#9fbcd3;background:#14283d;font-size:11px}
+.preTable td:nth-child(2),.preTable th:nth-child(2){text-align:left}
+.preTable small{display:block;font-size:10px;color:#7891a6;margin-top:3px}
+.preSectorGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:9px;margin:15px 0 30px}
+.preSectorGrid>div{padding:12px;background:#102337;border:1px solid #2e4661;border-radius:10px;display:grid;grid-template-columns:1fr auto;row-gap:3px}
+.preSectorGrid strong{font-size:14px}.preSectorGrid span{font-size:11px;color:#a9bccc;grid-column:1/2}
+.preSectorGrid b{font-size:16px;grid-column:2;grid-row:1}.preSectorGrid small{color:#7d98ab;grid-column:2;grid-row:2;font-size:10px;text-align:right}
+.preNews{margin:12px 0 24px}.preNews>div{padding:12px 0;border-bottom:1px solid #2c3e52}.preNews strong{font-size:13px}.preNews a{color:#ccecff}
+.preNews p{font-size:11px;color:#8499ac;margin:6px 0 0}
+.preArchive{border-top:1px solid #315269;padding-top:20px}.preArchive h2{font-size:20px;margin:0 0 5px}
+.preArchiveButtons{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.preArchiveButtons button{font-size:12px}
+.preArchiveRows{max-height:180px;overflow-y:auto}.preArchiveRows>div{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid #263a4d}
+.preArchiveRows button{background:transparent;border:0;color:#bbdfec;cursor:pointer;font-size:12px}
+@media(max-width:800px){.prePhases{grid-template-columns:1fr}.preMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
