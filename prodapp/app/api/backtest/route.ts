@@ -1,9 +1,11 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {controlAuthorized,unauthorized} from '@/lib/paper/security';
 import {backtest,periods,intervals,strategies,intervalAllowed,type Candle,type Period,type Interval,type Strategy} from '@/lib/backtest';
 export const runtime='nodejs';export const dynamic='force-dynamic';export const maxDuration=60;
 const millis:Record<Period,number>={'1d':86400000,'1w':7*86400000,'3w':21*86400000,'1m':31*86400000,'3m':93*86400000,'6m':186*86400000,'1y':366*86400000,'3y':1097*86400000,'5y':1828*86400000};
 const agg:Record<Interval,[number,string]>={'5m':[5,'minute'],'15m':[15,'minute'],'30m':[30,'minute'],'1h':[1,'hour'],'1d':[1,'day'],'1w':[1,'week']};
 export async function GET(req:NextRequest){
+ if(!controlAuthorized(req))return unauthorized();
  try{
  const q=req.nextUrl.searchParams,symbol=(q.get('symbol')||'').trim().toUpperCase(),period=(q.get('period')||'1m') as Period,interval=(q.get('interval')||'1d') as Interval,strategy=(q.get('strategy')||'Conservative Swing') as Strategy;
  if(!/^[A-Z][A-Z0-9.]{0,8}$/.test(symbol))throw Error('Enter a valid US ticker.');
