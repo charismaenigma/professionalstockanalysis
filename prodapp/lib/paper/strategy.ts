@@ -16,7 +16,7 @@ const round = (n: number) => Math.round(n * 100) / 100;
 // Version 1 conservative swing setup. It is a hypothesis to test, not a proven edge.
 export function assessSwing(
   analysis: AnalysisResult, snapshot: PaperSnapshot,
-  equity: number, settledCash: number, now = Date.now(),
+  equity: number, settledCash: number, now = Date.now(), allowedNotional = 0, slots: 2 | 3 = 3,
 ): SignalDecision {
   if (analysis.mode !== 'live') return {reason: 'Demo data is prohibited for trading.'};
   if (analysis.instrumentType !== 'Stock' || analysis.marketClassification !== 'Listed') {
@@ -62,12 +62,16 @@ export function assessSwing(
   if (stop <= 0 || perShareRisk <= 0 || target <= limit) {
     return {reason: 'A safe bracket order cannot be constructed.'};
   }
-  // All three limits must agree: 0.25% of equity at risk, 5% allocation,
-  // and at most 70% of available CASH (no borrowing).
+  // The bot's risk budget belongs to the 5% trading sleeve, not the 95% core.
+  // An explicit allowance from the account-wide sleeve ledger is mandatory.
+  if(!Number.isFinite(allowedNotional)||allowedNotional<=0) return {reason:'No verified active-trading budget remains.'};
+  const sleeve = equity*.05;
+  const slotCapacity=sleeve/slots;
   const qty = Math.floor(Math.min(
-    equity * 0.0025 / perShareRisk,
-    equity * 0.05 / limit,
-    Math.max(0, settledCash) * 0.7 / limit,
+    sleeve * .0025 / perShareRisk,
+    slotCapacity / limit,
+    allowedNotional / limit,
+    Math.max(0, settledCash) * .7 / limit,
   ));
   if (qty < 1) return {reason: 'Risk budget or settled cash is insufficient for one share.'};
   return {reason: 'Conservative long-only swing criteria passed.', order: {

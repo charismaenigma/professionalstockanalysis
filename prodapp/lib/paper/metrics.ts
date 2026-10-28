@@ -7,6 +7,7 @@ export interface ClosedTrade {
   entry: number;
   exit: number;
   pnl: number;
+  returnPct: number;
 }
 const positive = (x: unknown) => Number.isFinite(Number(x)) && Number(x) > 0;
 
@@ -32,6 +33,7 @@ export function reconstructTrades(fills: PaperFill[]): ClosedTrade[] {
         symbol: fill.symbol, closedAt: fill.transaction_time,
         qty: matched, entry: lot.price, exit: price,
         pnl: Math.round((price - lot.price) * matched * 100) / 100,
+        returnPct:(price/lot.price-1)*100,
       });
       remaining -= matched;
       lot.qty -= matched;
@@ -51,6 +53,9 @@ export function summarizeTrades(trades: ClosedTrade[]) {
     winRate: trades.length ? wins.length / trades.length * 100 : null,
     realizedPnl: trades.reduce((n,t) => n + t.pnl, 0),
     averagePnl: trades.length ? trades.reduce((n,t) => n + t.pnl, 0) / trades.length : null,
+    averageTradeReturnPct:trades.length?trades.reduce((n,t)=>n+t.returnPct,0)/trades.length:null,
+    bestTradeReturnPct:trades.length?Math.max(...trades.map(t=>t.returnPct)):null,
+    worstTradeReturnPct:trades.length?Math.min(...trades.map(t=>t.returnPct)):null,
     profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
     wins: wins.length,
     losses: losses.length,

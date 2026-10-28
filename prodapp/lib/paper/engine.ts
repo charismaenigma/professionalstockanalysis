@@ -5,6 +5,7 @@ import {
   type PaperAccount, type PaperOrder, type PaperPosition, type PaperSnapshot,
 } from './alpaca';
 import {assessSwing} from './strategy';
+import {calculatePaperBudget,positionSlots,type PaperRiskBudget} from './risk';
 
 export interface ScanEvent {
   symbol: string;
@@ -19,8 +20,14 @@ export interface ScanResult {
   events: ScanEvent[];
   submitted: number;
   marketOpen: boolean;
+  budget?: PaperRiskBudget;
 }
-function dateKey() { return new Date().toISOString().slice(0, 10).replaceAll('-', ''); }
+function dateKey() {
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',
+    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const named=Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+  return named.year+named.month+named.day;
+}
 
 export async function runPaperScan(execute: boolean): Promise<ScanResult> {
   if (!liveResearchConfigured()) throw new Error('MASSIVE_API_KEY is required: demo data cannot place orders.');
@@ -39,6 +46,8 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
     asOf: new Date().toISOString(), mode: execute ? 'paper-orders' : 'preview',
     events: [], submitted: 0, marketOpen: clock.is_open,
   };
+  const budget=calculatePaperBudget(account,positions,openOrders,positionSlots());
+  result.budget=budget;
   if (!watchlist.symbols.length) {
     result.events.push({symbol: '—', outcome: 'skipped', message: 'Choose up to five tickers for the paper watchlist.'});
     return result;
@@ -57,10 +66,12 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
     result.events.push({symbol: '—', outcome: 'skipped', message: '1% daily equity-loss circuit breaker is active.'});
     return result;
   }
-  const active = new Set(positions.map(p => p.symbol));
-  for (const order of openOrders) if (order.side === 'buy') active.add(order.symbol);
+  // Existing positions (except VOO core) and pending buy orders consume the
+  // shared 5% trading sleeve. Reject entries when their values are unverifiable.
+  const active=new Set(budget.activeSymbols);
   const attempted = new Set(recentOrders.map(o => o.client_order_id));
   let remainingCash = cash;
+  let remainingSleeve=budget.remainingSleeveValue;
   for (const symbol of watchlist.symbols.slice(0, 5)) {
     if (active.has(symbol)) {
       result.events.push({symbol, outcome: 'skipped', message: 'Existing position or open buy order.'});
@@ -71,8 +82,12 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
       result.events.push({symbol, outcome: 'skipped', message: 'Already attempted a paper order for this ticker today.'});
       continue;
     }
-    if (active.size >= 3) {
-      result.events.push({symbol, outcome: 'skipped', message: 'Maximum of three simultaneous positions/orders reached.'});
+    if (active.size >= budget.slotCount) {
+      result.events.push({symbol, outcome: 'skipped', message: 'Maximum of '+budget.slotCount+' concurrent active trading positions/orders reached.'});
+      continue;
+    }
+    if (remainingSleeve <= 0) {
+      result.events.push({symbol,outcome:'skipped',message:'The 5% active-trading sleeve has no uncommitted capital.'});
       continue;
     }
     try {
@@ -80,14 +95,17 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
         analyzeSymbol(symbol),
         dataGet<PaperSnapshot>('/v2/stocks/' + encodeURIComponent(symbol) + '/snapshot?feed=iex'),
       ]);
-      const decision = assessSwing(analysis, snapshot, equity, remainingCash);
+      const decision = assessSwing(analysis, snapshot, equity, remainingCash, Date.now(), remainingSleeve, budget.slotCount);
       if (!decision.order) {
         result.events.push({symbol, outcome: 'skipped', message: decision.reason, score: analysis.scores.swing.score ?? undefined});
         continue;
       }
       const draft = decision.order;
       if (!execute) {
-        result.events.push({symbol, outcome: 'candidate', message: 'Preview only. No order sent.', score: draft.score, qty: draft.qty});
+        result.events.push({symbol,outcome:'candidate',
+          message:'Preview only. Entry '+draft.limit.toFixed(2)+
+          ', stop '+draft.stop.toFixed(2)+', target '+draft.target.toFixed(2)+
+          '. No order sent.',score:draft.score,qty:draft.qty});
         continue;
       }
       // The endpoint is hard-coded to Alpaca PAPER. No live broker endpoint exists.
@@ -102,6 +120,7 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
       active.add(symbol);
       attempted.add(clientId);
       remainingCash -= draft.qty * draft.limit;
+      remainingSleeve = Math.max(0, remainingSleeve-draft.qty*draft.limit);
       result.submitted += 1;
       result.events.push({symbol, outcome: 'submitted', message: 'Paper-only bracket order submitted; fills are not guaranteed.', score: draft.score, qty: draft.qty});
     } catch (e) {

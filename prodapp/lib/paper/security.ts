@@ -14,4 +14,6 @@ export function cronAuthorized(request: Request) {
   return sameSecret(h?.startsWith('Bearer ') ? h.slice(7) : null, process.env.CRON_SECRET);
 }
 export const unauthorized = () =>
-  Response.json({error: 'Access denied. Enter the MarketClarity control token.'}, {status: 401});
+  process.env.PAPER_CONTROL_TOKEN
+    ? Response.json({error: 'Access denied. Check the control token for this environment.'}, {status: 401})
+    : Response.json({error: 'This deployment has no PAPER_CONTROL_TOKEN configured. Preview deployments do not inherit Production secrets. Add a separate control token under Vercel Preview environment variables.'}, {status: 503});

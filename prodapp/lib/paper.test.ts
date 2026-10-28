@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {assessSwing} from './paper/strategy';
+import {calculatePaperBudget} from './paper/risk';
 import {equityCurve,maxDrawdown,reconstructTrades,summarizeTrades} from './paper/metrics';
 import type {AnalysisResult} from './types';
 import type {PaperSnapshot,PaperFill} from './paper/alpaca';
@@ -21,28 +22,32 @@ function snapshot():PaperSnapshot {
 }
 describe('paper strategy risk gates',()=>{
   it('sizes a long-only paper bracket order from equity, exposure and cash limits',()=>{
-    const decision=assessSwing(analysis(),snapshot(),100000,40000,NOW);
+    const decision=assessSwing(analysis(),snapshot(),100000,40000,NOW,5000,3);
     expect(decision.order).toBeTruthy();
     expect(decision.order?.qty).toBeGreaterThan(0);
     expect(decision.order!.qty*decision.order!.limit).toBeLessThanOrEqual(5000);
-    expect(decision.order!.riskDollars).toBeLessThanOrEqual(250);
+    expect(decision.order!.riskDollars).toBeLessThanOrEqual(12.50);
+    expect(decision.order!.qty*decision.order!.limit).toBeLessThanOrEqual(5000/3);
     expect(decision.order!.target).toBeGreaterThan(decision.order!.limit);
     expect(decision.order!.stop).toBeLessThan(decision.order!.limit);
   });
+  it('fails closed unless remaining sleeve capital is explicitly supplied',()=>{
+    expect(assessSwing(analysis(),snapshot(),100000,40000,NOW).order).toBeUndefined();
+  });
   it('never trades demo mode even when scores appear favorable',()=>{
     const a=analysis();a.mode='demo';
-    expect(assessSwing(a,snapshot(),100000,40000,NOW).order).toBeUndefined();
+    expect(assessSwing(a,snapshot(),100000,40000,NOW,5000,3).order).toBeUndefined();
   });
   it('rejects stale quotes and wide spreads',()=>{
     const old=snapshot();old.latestQuote!.t='2026-10-27T15:00:00Z';
-    expect(assessSwing(analysis(),old,100000,40000,NOW).order).toBeUndefined();
+    expect(assessSwing(analysis(),old,100000,40000,NOW,5000,3).order).toBeUndefined();
     const wide=snapshot();wide.latestQuote!.bp=98;
-    expect(assessSwing(analysis(),wide,100000,40000,NOW).order).toBeUndefined();
+    expect(assessSwing(analysis(),wide,100000,40000,NOW,5000,3).order).toBeUndefined();
   });
   it('rejects hard vetoes and insufficient cash',()=>{
     const a=analysis();a.scores.swing.vetoes=['Dilution'];
-    expect(assessSwing(a,snapshot(),100000,40000,NOW).order).toBeUndefined();
-    expect(assessSwing(analysis(),snapshot(),100000,1,NOW).order).toBeUndefined();
+    expect(assessSwing(a,snapshot(),100000,40000,NOW,5000,3).order).toBeUndefined();
+    expect(assessSwing(analysis(),snapshot(),100000,1,NOW,5000,3).order).toBeUndefined();
   });
 });
 describe('paper performance',()=>{
@@ -63,4 +68,34 @@ describe('paper performance',()=>{
     const curve=equityCurve({timestamp:[1,2,3],equity:[100,120,90],profit_loss:[],profit_loss_pct:[]});
     expect(maxDrawdown(curve.map(x=>x.equity))).toBeCloseTo(25);
   });
+});
+
+describe('95/5 paper trading sleeve safety',()=>{
+ const account={equity:'100000',cash:'5000'};
+ const position=(symbol:string,value:number)=>({symbol,qty:'10',market_value:String(value),avg_entry_price:'100',current_price:'100',unrealized_pl:'0',unrealized_plpc:'0'});
+ const order=(symbol:string,remainingQty:number,limit:number,filled='0')=>({id:'order'+symbol,client_order_id:'bot'+symbol,symbol,qty:String(remainingQty),filled_qty:filled,limit_price:String(limit),side:'buy' as const,type:'limit',status:'new',created_at:new Date().toISOString()});
+ it('reserves 95% as VOO core and limits cumulative activity to 5% of equity',()=>{
+  const b=calculatePaperBudget(account,[position('VOO',95000),position('SOFI',1200)], [order('AVGO',10,100)],3);
+  expect(b.tradingSleeveValue).toBe(5000);
+  expect(b.usedSleeveValue).toBe(2200);
+  expect(b.remainingSleeveValue).toBe(2800);
+  expect(b.availableSlots).toBe(1);
+  expect(b.riskBudgetPerTrade).toBe(12.5);
+ });
+ it('does not count filled portions twice in pending open buys',()=>{
+  const b=calculatePaperBudget(account,[position('SOFI',500)],[order('SOFI',10,100,'5')],3);
+  expect(b.usedSleeveValue).toBe(1000);
+  expect(b.activeSymbols).toEqual(['SOFI']);
+ });
+ it('blocks entries with unpriced open orders or an oversubscribed sleeve',()=>{
+  const bad={...order('UNKN',10,10),limit_price:null};
+  expect(()=>calculatePaperBudget(account,[],[bad],3)).toThrow('Cannot determine');
+  const b=calculatePaperBudget(account,[position('AVGO',6000)],[],3);
+  expect(b.remainingSleeveValue).toBe(0);
+ });
+ it('supports 2 reserved slots',()=>{
+  const b=calculatePaperBudget(account,[],[],2);
+  expect(b.slotMaxValue).toBe(2500);
+  expect(b.availableSlots).toBe(2);
+ });
 });
