@@ -1,25 +1,48 @@
-name: MarketClarity Paper Scanner
+name: MarketClarity Paper Scanner (safe dry-run)
 
 on:
-  schedule:
-    # Three scans near US trading hours. Alpaca market clock blocks closed sessions.
-    - cron: '15 15,17,19 * * 1-5'
   workflow_dispatch:
+  # Scheduling stays off until protected Preview auth and dry-run checks pass.
+  # Re-enable after validating time zone and paper-only trading gates.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketclarity-paper-scanner
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: Trigger authenticated PAPER scan
+      - name: Validate secure configuration
         env:
           DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
-          SCAN_SECRET: ${{ secrets.MARKETCLARITY_CRON_SECRET }}
+          CONTROL_TOKEN: ${{ secrets.MARKETCLARITY_CONTROL_TOKEN }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          if [ -z "$DEPLOYMENT_URL" ] || [ -z "$SCAN_SECRET" ]; then
-            echo "Configure MARKETCLARITY_URL and MARKETCLARITY_CRON_SECRET in repository settings."
-            exit 1
-          fi
-          curl --fail --show-error --silent --max-time 110 \
-            --header "Authorization: Bearer $SCAN_SECRET" \
-            "${DEPLOYMENT_URL%/}/api/paper/run"
+          set -euo pipefail
+          test -n "$DEPLOYMENT_URL" && test -n "$CONTROL_TOKEN" && test -n "$VERCEL_BYPASS" || {
+            echo "Missing MarketClarity URL, control token, or Vercel bypass secret"; exit 1;
+          }
+          node -e 'const u=new URL(process.env.DEPLOYMENT_URL);if(u.protocol!=="https:"||!u.hostname.endsWith(".vercel.app")||u.username||u.password||u.search||u.hash)process.exit(1)'
+
+      - name: Inspect final picks and run read-only paper scan
+        env:
+          DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
+          CONTROL_TOKEN: ${{ secrets.MARKETCLARITY_CONTROL_TOKEN }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+          base="${DEPLOYMENT_URL%/}"
+          common=(--fail-with-body --silent --show-error --max-time 110 --retry 1
+            --header "x-vercel-protection-bypass: $VERCEL_BYPASS"
+            --header "x-marketclarity-token: $CONTROL_TOKEN"
+            --header "Content-Type: application/json")
+          # Read-only handoff preview. Never mutate the Alpaca watchlist here.
+          curl "${common[@]}" --request POST --data '{"apply":false}' "$base/api/paper/final-picks" -o /dev/null
+          # Dry-run only: execute=false and no paper order submission.
+          curl "${common[@]}" --request POST --data '{"execute":false}' "$base/api/paper/run" -o /dev/null
+          echo "Read-only MarketClarity paper scan completed. No orders submitted."
