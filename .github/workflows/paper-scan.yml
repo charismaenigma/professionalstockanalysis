@@ -2,8 +2,7 @@ name: MarketClarity Paper Scanner (safe dry-run)
 
 on:
   workflow_dispatch:
-  # Scheduling stays off until protected Preview auth and dry-run checks pass.
-  # Re-enable after validating time zone and paper-only trading gates.
+  # Scheduling and all order submission remain disabled.
 
 permissions:
   contents: read
@@ -29,7 +28,7 @@ jobs:
           }
           node -e 'const u=new URL(process.env.DEPLOYMENT_URL);if(u.protocol!=="https:"||!u.hostname.endsWith(".vercel.app")||u.username||u.password||u.search||u.hash)process.exit(1)'
 
-      - name: Inspect final picks and run read-only paper scan
+      - name: Inspect final picks and paper scan diagnostics (read-only)
         env:
           DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
           CONTROL_TOKEN: ${{ secrets.MARKETCLARITY_CONTROL_TOKEN }}
@@ -37,12 +36,61 @@ jobs:
         run: |
           set -euo pipefail
           base="${DEPLOYMENT_URL%/}"
-          common=(--fail-with-body --silent --show-error --max-time 110 --retry 1
+          common=(--silent --show-error --max-time 110
             --header "x-vercel-protection-bypass: $VERCEL_BYPASS"
             --header "x-marketclarity-token: $CONTROL_TOKEN"
             --header "Content-Type: application/json")
-          # Read-only handoff preview. Never mutate the Alpaca watchlist here.
-          curl "${common[@]}" --request POST --data '{"apply":false}' "$base/api/paper/final-picks" -o /dev/null
-          # Dry-run only: execute=false and no paper order submission.
-          curl "${common[@]}" --request POST --data '{"execute":false}' "$base/api/paper/run" -o /dev/null
-          echo "Read-only MarketClarity paper scan completed. No orders submitted."
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          for endpoint in final-picks run; do
+            if [[ "$endpoint" == "final-picks" ]]; then
+              payload='{"apply":false}'
+            else
+              payload='{"execute":false}'
+            fi
+            status="$(curl "${common[@]}" --request POST --data "$payload" \
+              --output "$tmpdir/$endpoint.json" --write-out '%{http_code}' \
+              "$base/api/paper/$endpoint")"
+            echo "$endpoint HTTP status: $status"
+            if [[ "$status" != "200" ]]; then
+              echo "::error::$endpoint returned HTTP $status"
+              exit 1
+            fi
+          done
+          node - "$tmpdir/final-picks.json" "$tmpdir/run.json" <<'NODE'
+          const fs = require('node:fs');
+          const [picks, scan] = process.argv.slice(2).map(p => JSON.parse(fs.readFileSync(p, 'utf8')));
+          if (picks.readOnly !== true || picks.applied !== false || !Array.isArray(picks.eligible)) {
+            throw new Error('Final picks response did not confirm read-only mode');
+          }
+          if (scan.mode !== 'preview' || scan.submitted !== 0 || !Array.isArray(scan.events)) {
+            throw new Error('Paper scan did not confirm preview mode and zero orders');
+          }
+          const clean = v => String(v ?? '').replace(/[\r\n|]/g, ' ').slice(0, 180);
+          const lines = [
+            '## MarketClarity read-only dry run',
+            '',
+            '| Check | Result |',
+            '|---|---|',
+            '| Final picks | Read-only; watchlist unchanged |',
+            '| Eligible picks | ' + picks.eligible.length + ' |',
+            '| Eligible symbols | ' + (picks.eligible.map(clean).join(', ') || 'None') + ' |',
+            '| Research market date | ' + clean(picks.marketDate) + ' |',
+            '| Research timestamp | ' + clean(picks.asOf) + ' |',
+            '| Paper engine | Preview only |',
+            '| Alpaca market open | ' + Boolean(scan.marketOpen) + ' |',
+            '| Orders submitted | 0 |',
+            '| Paper scan events | ' + scan.events.length + ' |',
+            '',
+            '### Research warnings',
+            ...(Array.isArray(picks.warnings) && picks.warnings.length ? picks.warnings.map(w => '- ' + clean(w)) : ['- None reported']),
+            '',
+            '### Paper scan outcomes',
+            ...(scan.events.length ? scan.events.slice(0, 15).map(e => '- ' + clean(e.symbol) + ': ' + clean(e.outcome) + ' — ' + clean(e.message)) : ['- No events returned']),
+            '',
+            '> This is not a validated trading signal or an order execution test.'
+          ];
+          console.log('Eligible picks:', picks.eligible.length, 'Market open:', Boolean(scan.marketOpen), 'Paper events:', scan.events.length, 'Orders:', scan.submitted);
+          if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          NODE
+          echo "Read-only MarketClarity diagnostics completed. No orders submitted."
