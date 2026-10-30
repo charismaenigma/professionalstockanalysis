@@ -20,7 +20,7 @@ export async function POST(request:NextRequest){
    row.quoteAgeMinutes!=null && row.quoteAgeMinutes>=-1 && row.quoteAgeMinutes<=10 &&
    row.tradeAgeMinutes!=null && row.tradeAgeMinutes>=-1 && row.tradeAgeMinutes<=15 &&
    row.spreadPct!=null && row.spreadPct<=0.6 &&
-   row.premarketVolumeIex!=null && row.premarketVolumeIex>=500
+   row.session!=='outside' && row.sessionVolumeIex!=null && row.sessionVolumeIex>=500
   ).slice(0,5).map(row=>row.ticker);
   // Diagnostic funnel: independent counts, not mutually exclusive failure buckets.
   // The universe covers all evaluated seeds; ranked covers only the final top 15.
@@ -33,8 +33,11 @@ export async function POST(request:NextRequest){
    staleTradesInRanked:report.ranked.filter(row=>row.evidence==='stale').length,
    freshQuotesInRanked:report.ranked.filter(row=>row.quoteAgeMinutes!=null&&row.quoteAgeMinutes>=-1&&row.quoteAgeMinutes<=10&&row.bid!=null&&row.ask!=null).length,
    acceptableSpreadsInRanked:report.ranked.filter(row=>row.spreadPct!=null&&row.spreadPct<=0.6).length,
-   sufficientIexVolumeInRanked:report.ranked.filter(row=>row.premarketVolumeIex!=null&&row.premarketVolumeIex>=500).length,
+   sufficientIexVolumeInRanked:report.ranked.filter(row=>row.session!=='outside'&&row.sessionVolumeIex!=null&&row.sessionVolumeIex>=500).length,
    liquidityPassInRanked:report.ranked.filter(row=>row.liquidity==='pass').length,
+   session:report.ranked[0]?.session??'outside',
+   regularVolumeObservedInRanked:report.ranked.filter(row=>row.regularSessionVolumeIex!=null).length,
+   sessionVolumePassInRanked:report.ranked.filter(row=>row.sessionVolumeIex!=null&&row.sessionVolumeIex>=500).length,
    eligible:eligible.length,
    scope:'Counts are independent and based on the final-phase ranked top 15 unless named candidateUniverse. IEX-only.'
   };
