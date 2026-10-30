@@ -52,8 +52,17 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
     result.events.push({symbol: '—', outcome: 'skipped', message: 'Choose up to five tickers for the paper watchlist.'});
     return result;
   }
-  if (!clock.is_open || account.status !== 'ACTIVE' || account.trading_blocked) {
-    result.events.push({symbol: '—', outcome: 'skipped', message: 'Market closed or paper account is restricted.'});
+  // Report broker restrictions independently from market hours so an
+  // inactive or blocked paper account cannot be mistaken for a normal closure.
+  if (account.status !== 'ACTIVE' || account.trading_blocked) {
+    result.events.push({symbol: '—', outcome: 'error',
+      message: 'Alpaca paper account is restricted: status=' + String(account.status) +
+        ', trading_blocked=' + String(Boolean(account.trading_blocked)) + '.'});
+    return result;
+  }
+  if (!clock.is_open) {
+    result.events.push({symbol: '—', outcome: 'skipped',
+      message: 'Market closed; Alpaca paper account is active and not trading-blocked.'});
     return result;
   }
   const equity = Number(account.equity), cash = Number(account.cash);
