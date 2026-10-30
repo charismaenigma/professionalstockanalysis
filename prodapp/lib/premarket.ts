@@ -5,7 +5,7 @@ export type EvidenceStatus='fresh'|'stale'|'missing';
 type Bar={t:string;o:number;h:number;l:number;c:number;v:number};
 type Grouped={results?:Array<{T:string;o:number;c:number;v:number}>};
 type Snap={latestTrade?:{p:number;t:string};latestQuote?:{ap:number;bp:number;t:string};minuteBar?:{c:number;v:number;t:string};prevDailyBar?:{c:number}};
-type SnapResponse={snapshots?:Record<string,Snap>};
+type SnapResponse={snapshots?:Record<string,Snap>} & Record<string,unknown>;
 type BarResponse={bars?:Record<string,Bar[]>;next_page_token?:string|null};
 type NewsResponse={news?:Array<{id:number;headline:string;created_at:string;url?:string;symbols?:string[];source?:string}>};
 export type PremarketCandidate={
@@ -13,6 +13,7 @@ export type PremarketCandidate={
  latestPrice:number|null;gapPct:number|null;gapDollars:number|null;
  quoteAgeMinutes:number|null;tradeAgeMinutes:number|null;bid:number|null;ask:number|null;spreadPct:number|null;
  premarketVolumeIex:number|null;estimatedPremarketDollarVolume:number|null;
+ regularSessionVolumeIex:number|null;session:'premarket'|'regular'|'outside';sessionVolumeIex:number|null;
  previousSessionVolume:number;priorDayDollarVolume:number;
  evidence:EvidenceStatus;rank:number|null;score:number|null;liquidity:'pass'|'watch'|'fail';
  newsCount:number;
@@ -24,6 +25,7 @@ export type PremarketReport={
  feed:'Alpaca IEX single-exchange, Massive prior completed session';
  ranked:PremarketCandidate[];sectors:PremarketSector[];news:PremarketHeadline[];
  watchlist:string[];candidateUniverse:number;freshCandidates:number;
+ snapshotDiagnostics:{requested:number;returned:number;missing:number;tradeAbsent:number;tradeInvalidTimestamp:number;tradePreviousSession:number;tradeCurrentSession:number;tradeFresh:number;tradeStaleCurrentSession:number;quoteAbsent:number;quoteInvalidTimestamp:number;quotePreviousSession:number;quoteCurrentSession:number;quoteFresh:number;quoteStaleCurrentSession:number;failedBatches:number;wrappedBatches:number;directBatches:number;unrecognizedBatches:number};
  warnings:string[];readOnly:true;ordersSubmitted:0;
 };
 const ET='America/New_York';
@@ -80,13 +82,19 @@ export function assessPremarketRow(input:{
  const spread=ask&&bid&&bid<ask?((ask-bid)/ask)*100:null;
  const quoteAge=quoteSameDay?(asOf.getTime()-qTime)/60000:null;
  const tradeAge=tradeSameDay?(asOf.getTime()-tradeTime)/60000:null;
- const bars=(input.bars||[]).filter(b=>{
+ const sessionMinute=Number(etParts(asOf).hour)*60+Number(etParts(asOf).minute);
+ const session:PremarketCandidate['session']=sessionMinute>=570&&sessionMinute<960?'regular':sessionMinute>=240&&sessionMinute<570?'premarket':'outside';
+ const validBars=(input.bars||[]).filter(b=>{
   const t=new Date(b.t);
   if(!Number.isFinite(t.getTime())||t.getTime()>asOf.getTime())return false;
-  const z=etPremarketDateTime(t);return z.date===day&&z.hour>=4&&z.hour<9||z.date===day&&z.hour===9&&z.minute<30;
+  const z=etPremarketDateTime(t);return z.date===day&&((z.hour>=4&&z.hour<9)||(z.hour===9&&z.minute<30)||(z.hour===9&&z.minute>=30)||(z.hour>=10&&z.hour<16));
  });
- const volume=bars.length?bars.reduce((total,b)=>total+(Number.isFinite(b.v)&&b.v>0?b.v:0),0):null;
- const dollarVolume=bars.length?bars.reduce((total,b)=>total+(Number.isFinite(b.c)&&Number.isFinite(b.v)?b.c*b.v:0),0):null;
+ const preBars=validBars.filter(b=>{const z=etPremarketDateTime(new Date(b.t));return z.hour<9||(z.hour===9&&z.minute<30);});
+ const regularBars=validBars.filter(b=>{const z=etPremarketDateTime(new Date(b.t));return z.hour>9||(z.hour===9&&z.minute>=30);});
+ const sumVolume=(items:Bar[])=>items.length?items.reduce((n,b)=>n+(Number.isFinite(b.v)&&b.v>0?b.v:0),0):null;
+ const volume=sumVolume(preBars),regularVolume=sumVolume(regularBars);
+ const sessionVolume=session==='regular'?regularVolume:session==='premarket'?volume:null;
+ const dollarVolume=preBars.length?preBars.reduce((total,b)=>total+(Number.isFinite(b.c)&&Number.isFinite(b.v)?b.c*b.v:0),0):null;
  const gap=price&&previousClose>0?(price/previousClose-1)*100:null;
  const fresh=price!=null&&tradeAge!=null&&tradeAge>=-1&&tradeAge<=15;
  const quoteFresh=ask!=null&&bid!=null&&quoteAge!=null&&quoteAge>=-1&&quoteAge<=10;
@@ -95,15 +103,16 @@ export function assessPremarketRow(input:{
  // the research gates, not a full consolidated NBBO or trade execution approval.
  const liquidity:'pass'|'watch'|'fail'=
   evidence==='missing'||previousClose<=0?'fail':
-  fresh&&quoteFresh&&spread!=null&&spread<=.6&&ask!>=3&&(volume??0)>=500?'pass':'watch';
+  fresh&&quoteFresh&&spread!=null&&spread<=.6&&ask!>=3&&session!=='outside'&&(sessionVolume??0)>=500?'pass':'watch';
  // Purely descriptive *unvalidated* rank: reward observed gap and exchange volume.
  // Unobserved data gets no score and no fictitious zero gap.
  const score=gap!=null&&fresh?Math.min(100,Math.max(0,
-  35+Math.min(30,Math.abs(gap)*3)+Math.min(20,Math.log10(1+(volume??0))*3)+
+  35+Math.min(30,Math.abs(gap)*3)+Math.min(20,Math.log10(1+(sessionVolume??0))*3)+
   (liquidity==='pass'?10:0)-Math.min(20,(spread??1)*5))):null;
  return {ticker,source,previousClose,latestPrice:price,gapPct:round(gap),gapDollars:round(price==null?null:price-previousClose),
   quoteAgeMinutes:round(quoteAge,1),tradeAgeMinutes:round(tradeAge,1),bid,ask,spreadPct:round(spread,3),
   premarketVolumeIex:volume,estimatedPremarketDollarVolume:round(dollarVolume),
+  regularSessionVolumeIex:regularVolume,session,sessionVolumeIex:sessionVolume,
   previousSessionVolume:previousVolume,priorDayDollarVolume:round(previousClose*previousVolume)||0,
   evidence,rank:null,score:round(score,1),liquidity,newsCount};
 }
@@ -150,7 +159,7 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
  const warnings:string[]=['Observations use Alpaca IEX (single exchange) and are not consolidated market-wide premarket volume or NBBO.','Momentum ranks are experimental research heuristics, not proven trade signals or paper order approvals.'];
  if(weekday===0||weekday===6)warnings.push('Weekend: there is no regular US stock session today.');
  if(Number(p.hour)<4)warnings.push('Before 04:00 Eastern: current-session premarket observations may not exist.');
- if(Number(p.hour)>=9&&(Number(p.hour)>9||Number(p.minute)>=30))warnings.push('Market is at/after 09:30 Eastern: premarket-only readings exclude regular-session bars.');
+ if(Number(p.hour)>=9&&(Number(p.hour)>9||Number(p.minute)>=30))warnings.push('Market is at/after 09:30 Eastern: regular-session volume is tracked separately from premarket volume.');
  const watchlist=(await readPaperWatchlist()).symbols.filter(validTicker).slice(0,5);
  const prior=await fetchPreviousDay(today,warnings);
  if(!prior.rows.length)warnings.push('Unable to obtain verified prior completed session; gaps and rankings will be suppressed.');
@@ -163,18 +172,70 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
  const all:Record<string,Snap>={};
  // Avoid over-claiming completeness: Alpaca snapshots only cover IEX prints/quotes.
  const results=await Promise.allSettled(chunks.map(c=>dataGet<SnapResponse>('/v2/stocks/snapshots?symbols='+encodeURIComponent(c.join(','))+'&feed=iex')));
+ let wrappedBatches=0,directBatches=0,unrecognizedBatches=0;
  for(let i=0;i<results.length;i++){
-  const r=results[i];if(r.status==='fulfilled')Object.assign(all,r.value.snapshots||{});
-  else warnings.push('Alpaca IEX snapshot batch '+(i+1)+' unavailable; partial results only.');
+  const r=results[i];
+  if(r.status==='rejected'){
+   warnings.push('Alpaca IEX snapshot batch '+(i+1)+' unavailable; partial results only.');
+   continue;
+  }
+  const payload=r.value;
+  // Alpaca multi-symbol snapshots can be represented as a direct symbol map
+  // or under a snapshots key. Accept only explicitly requested ticker keys.
+  const wrapped=payload?.snapshots;
+  const source=wrapped&&typeof wrapped==='object'&&!Array.isArray(wrapped)?wrapped:payload;
+  if(source&&typeof source==='object'&&!Array.isArray(source)){
+   let matched=0;
+   for(const ticker of chunks[i]){
+    const snap=(source as Record<string,unknown>)[ticker];
+    if(snap&&typeof snap==='object'&&!Array.isArray(snap)){
+     all[ticker]=snap as Snap;
+     matched++;
+    }
+   }
+   if(wrapped)wrappedBatches++;else directBatches++;
+   if(!matched)warnings.push('Snapshot batch '+(i+1)+' returned no requested symbol records.');
+  }else{
+   unrecognizedBatches++;
+   warnings.push('Snapshot batch '+(i+1)+' returned an unrecognized response structure.');
+  }
+ }
+ // Aggregate timestamp diagnostics across the entire requested candidate universe.
+ // Do not expose raw brokerage payloads or loosen any screening gates.
+ const snapshotDiagnostics={
+  requested:selections.length,returned:0,missing:0,
+  tradeAbsent:0,tradeInvalidTimestamp:0,tradePreviousSession:0,
+  tradeCurrentSession:0,tradeFresh:0,tradeStaleCurrentSession:0,
+  quoteAbsent:0,quoteInvalidTimestamp:0,quotePreviousSession:0,
+  quoteCurrentSession:0,quoteFresh:0,quoteStaleCurrentSession:0,
+  failedBatches:results.filter(x=>x.status==='rejected').length,
+  wrappedBatches,directBatches,unrecognizedBatches
+ };
+ for(const ticker of selections){
+  const snap=all[ticker];
+  if(!snap){snapshotDiagnostics.missing++;continue;}
+  snapshotDiagnostics.returned++;
+  for(const kind of ['trade','quote'] as const){
+   const item=kind==='trade'?snap.latestTrade:snap.latestQuote;
+   if(!item){snapshotDiagnostics[kind==='trade'?'tradeAbsent':'quoteAbsent']++;continue;}
+   const ms=Date.parse(item.t||'');
+   if(!Number.isFinite(ms)){snapshotDiagnostics[kind==='trade'?'tradeInvalidTimestamp':'quoteInvalidTimestamp']++;continue;}
+   if(!sameMarketDay(item.t,today)){snapshotDiagnostics[kind==='trade'?'tradePreviousSession':'quotePreviousSession']++;continue;}
+   snapshotDiagnostics[kind==='trade'?'tradeCurrentSession':'quoteCurrentSession']++;
+   const age=(now.getTime()-ms)/60000;
+   if(age>=-1&&age<=(kind==='trade'?15:10))
+    snapshotDiagnostics[kind==='trade'?'tradeFresh':'quoteFresh']++;
+   else snapshotDiagnostics[kind==='trade'?'tradeStaleCurrentSession':'quoteStaleCurrentSession']++;
+  }
  }
  const nowEt=etPremarketDateTime(now);
  const bars:Record<string,Bar[]>={};
- if(nowEt.hour>=4&&nowEt.hour<10&&selections.length){
+ if(nowEt.hour>=4&&nowEt.hour<16&&selections.length){
   const start=new Date(now.getTime());
   const nowM=nowEt.hour*60+nowEt.minute;
   start.setTime(now.getTime()-(nowM-240)*60000);
   // Up to 3 pages; more pages would be required if provider changes page size.
-  // No bars from the post-open interval will count toward premarket metrics.
+  // Separate premarket and regular-session bars; never mix their volume totals.
   const url=new URL('https://data.alpaca.markets/v2/stocks/bars');
   url.searchParams.set('symbols',selections.join(','));
   url.searchParams.set('timeframe','5Min');url.searchParams.set('feed','iex');
@@ -189,9 +250,9 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
     for(const [ticker,values] of Object.entries(pageData.bars||{}))bars[ticker]=(bars[ticker]||[]).concat(values);
     nextToken=pageData.next_page_token||null;
     if(!nextToken)break;
-   }catch{warnings.push('IEX 5-minute premarket bars unavailable; volume fields will be marked missing.');break;}
+   }catch{warnings.push('IEX 5-minute session bars unavailable; volume fields will be marked missing.');break;}
   }
-  if(nextToken)warnings.push('IEX bar results were truncated after 3 pages; incomplete premarket volume.');
+  if(nextToken)warnings.push('IEX bar results were truncated after 3 pages; session volume may be incomplete.');
  }
  let rawNews:NonNullable<NewsResponse['news']>=[];
  try{
@@ -221,5 +282,5 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
  if(!freshCount)warnings.push('No ranked watchlist stock has a fresh same-session IEX trade; no current gap ranking is validated.');
  return {version:'premarket-research-v0.1',phase,asOf:now.toISOString(),marketDate:today,previousSession:prior.date,
   feed:'Alpaca IEX single-exchange, Massive prior completed session',
-  ranked,sectors,news,watchlist,candidateUniverse:selections.length,freshCandidates:freshCount,warnings,readOnly:true,ordersSubmitted:0};
+  ranked,sectors,news,watchlist,candidateUniverse:selections.length,freshCandidates:freshCount,snapshotDiagnostics,warnings,readOnly:true,ordersSubmitted:0};
 }

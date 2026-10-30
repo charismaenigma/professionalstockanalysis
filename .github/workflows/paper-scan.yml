@@ -1,25 +1,126 @@
-name: MarketClarity Paper Scanner
+name: MarketClarity Paper Scanner (safe dry-run)
 
 on:
-  schedule:
-    # Three scans near US trading hours. Alpaca market clock blocks closed sessions.
-    - cron: '15 15,17,19 * * 1-5'
   workflow_dispatch:
+  # Scheduling and all order submission remain disabled.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketclarity-paper-scanner
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: Trigger authenticated PAPER scan
+      - name: Validate secure configuration
         env:
           DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
-          SCAN_SECRET: ${{ secrets.MARKETCLARITY_CRON_SECRET }}
+          CONTROL_TOKEN: ${{ secrets.MARKETCLARITY_CONTROL_TOKEN }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
-          if [ -z "$DEPLOYMENT_URL" ] || [ -z "$SCAN_SECRET" ]; then
-            echo "Configure MARKETCLARITY_URL and MARKETCLARITY_CRON_SECRET in repository settings."
-            exit 1
-          fi
-          curl --fail --show-error --silent --max-time 110 \
-            --header "Authorization: Bearer $SCAN_SECRET" \
-            "${DEPLOYMENT_URL%/}/api/paper/run"
+          set -euo pipefail
+          test -n "$DEPLOYMENT_URL" && test -n "$CONTROL_TOKEN" && test -n "$VERCEL_BYPASS" || {
+            echo "Missing MarketClarity URL, control token, or Vercel bypass secret"; exit 1;
+          }
+          node -e 'const u=new URL(process.env.DEPLOYMENT_URL);if(u.protocol!=="https:"||!u.hostname.endsWith(".vercel.app")||u.username||u.password||u.search||u.hash)process.exit(1)'
+
+      - name: Inspect final picks and paper scan diagnostics (read-only)
+        env:
+          DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
+          CONTROL_TOKEN: ${{ secrets.MARKETCLARITY_CONTROL_TOKEN }}
+          VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+          base="${DEPLOYMENT_URL%/}"
+          common=(--silent --show-error --max-time 110
+            --header "x-vercel-protection-bypass: $VERCEL_BYPASS"
+            --header "x-marketclarity-token: $CONTROL_TOKEN"
+            --header "Content-Type: application/json")
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          for endpoint in final-picks run; do
+            if [[ "$endpoint" == "final-picks" ]]; then
+              payload='{"apply":false}'
+            else
+              payload='{"execute":false}'
+            fi
+            status="$(curl "${common[@]}" --request POST --data "$payload" \
+              --output "$tmpdir/$endpoint.json" --write-out '%{http_code}' \
+              "$base/api/paper/$endpoint")"
+            echo "$endpoint HTTP status: $status"
+            if [[ "$status" != "200" ]]; then
+              echo "::error::$endpoint returned HTTP $status"
+              exit 1
+            fi
+          done
+          node - "$tmpdir/final-picks.json" "$tmpdir/run.json" <<'NODE'
+          const fs = require('node:fs');
+          const [picks, scan] = process.argv.slice(2).map(p => JSON.parse(fs.readFileSync(p, 'utf8')));
+          if (picks.readOnly !== true || picks.applied !== false || !Array.isArray(picks.eligible)) {
+            throw new Error('Final picks response did not confirm read-only mode');
+          }
+          if (scan.mode !== 'preview' || scan.submitted !== 0 || !Array.isArray(scan.events)) {
+            throw new Error('Paper scan did not confirm preview mode and zero orders');
+          }
+          const clean = v => String(v ?? '').replace(/[\r\n|]/g, ' ').slice(0, 180);
+          const lines = [
+            '## MarketClarity read-only dry run',
+            '',
+            '| Check | Result |',
+            '|---|---|',
+            '| Final picks | Read-only; watchlist unchanged |',
+            '| Eligible picks | ' + picks.eligible.length + ' |',
+            '| Candidate universe | ' + (Number.isInteger(picks.diagnostics?.candidateUniverse) ? picks.diagnostics.candidateUniverse : 'Unavailable') + ' |',
+            '| Snapshot records returned (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.returned) ? picks.diagnostics.snapshot.returned : 'Unavailable') + ' |',
+            '| Snapshot records missing (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.missing) ? picks.diagnostics.snapshot.missing : 'Unavailable') + ' |',
+            '| Trade absent (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.tradeAbsent) ? picks.diagnostics.snapshot.tradeAbsent : 'Unavailable') + ' |',
+            '| Trade timestamp invalid (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.tradeInvalidTimestamp) ? picks.diagnostics.snapshot.tradeInvalidTimestamp : 'Unavailable') + ' |',
+            '| Trade previous session (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.tradePreviousSession) ? picks.diagnostics.snapshot.tradePreviousSession : 'Unavailable') + ' |',
+            '| Trade current session (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.tradeCurrentSession) ? picks.diagnostics.snapshot.tradeCurrentSession : 'Unavailable') + ' |',
+            '| Trade fresh (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.tradeFresh) ? picks.diagnostics.snapshot.tradeFresh : 'Unavailable') + ' |',
+            '| Trade stale today (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.tradeStaleCurrentSession) ? picks.diagnostics.snapshot.tradeStaleCurrentSession : 'Unavailable') + ' |',
+            '| Quote absent (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.quoteAbsent) ? picks.diagnostics.snapshot.quoteAbsent : 'Unavailable') + ' |',
+            '| Quote timestamp invalid (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.quoteInvalidTimestamp) ? picks.diagnostics.snapshot.quoteInvalidTimestamp : 'Unavailable') + ' |',
+            '| Quote previous session (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.quotePreviousSession) ? picks.diagnostics.snapshot.quotePreviousSession : 'Unavailable') + ' |',
+            '| Quote current session (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.quoteCurrentSession) ? picks.diagnostics.snapshot.quoteCurrentSession : 'Unavailable') + ' |',
+            '| Quote fresh (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.quoteFresh) ? picks.diagnostics.snapshot.quoteFresh : 'Unavailable') + ' |',
+            '| Quote stale today (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.quoteStaleCurrentSession) ? picks.diagnostics.snapshot.quoteStaleCurrentSession : 'Unavailable') + ' |',
+            '| Wrapped snapshot batches | ' + (Number.isInteger(picks.diagnostics?.snapshot?.wrappedBatches) ? picks.diagnostics.snapshot.wrappedBatches : 'Unavailable') + ' |',
+            '| Direct-map snapshot batches | ' + (Number.isInteger(picks.diagnostics?.snapshot?.directBatches) ? picks.diagnostics.snapshot.directBatches : 'Unavailable') + ' |',
+            '| Unrecognized snapshot batches | ' + (Number.isInteger(picks.diagnostics?.snapshot?.unrecognizedBatches) ? picks.diagnostics.snapshot.unrecognizedBatches : 'Unavailable') + ' |',
+            '| Snapshot batches failed (universe) | ' + (Number.isInteger(picks.diagnostics?.snapshot?.failedBatches) ? picks.diagnostics.snapshot.failedBatches : 'Unavailable') + ' |',
+            '| Session | ' + String(picks.diagnostics?.session ?? 'Unavailable') + ' |',
+            '| Regular-session volume observed (ranked) | ' + (Number.isInteger(picks.diagnostics?.regularVolumeObservedInRanked) ? picks.diagnostics.regularVolumeObservedInRanked : 'Unavailable') + ' |',
+            '| Session-specific volume passes (ranked) | ' + (Number.isInteger(picks.diagnostics?.sessionVolumePassInRanked) ? picks.diagnostics.sessionVolumePassInRanked : 'Unavailable') + ' |',
+            '| Ranked rows inspected | ' + (Number.isInteger(picks.diagnostics?.rankedReturned) ? picks.diagnostics.rankedReturned : 'Unavailable') + ' |',
+            '| Fresh trades (ranked) | ' + (Number.isInteger(picks.diagnostics?.freshTradesInRanked) ? picks.diagnostics.freshTradesInRanked : 'Unavailable') + ' |',
+            '| Missing trades (ranked) | ' + (Number.isInteger(picks.diagnostics?.missingTradesInRanked) ? picks.diagnostics.missingTradesInRanked : 'Unavailable') + ' |',
+            '| Stale trades (ranked) | ' + (Number.isInteger(picks.diagnostics?.staleTradesInRanked) ? picks.diagnostics.staleTradesInRanked : 'Unavailable') + ' |',
+            '| Fresh quotes (ranked) | ' + (Number.isInteger(picks.diagnostics?.freshQuotesInRanked) ? picks.diagnostics.freshQuotesInRanked : 'Unavailable') + ' |',
+            '| Acceptable spreads (ranked) | ' + (Number.isInteger(picks.diagnostics?.acceptableSpreadsInRanked) ? picks.diagnostics.acceptableSpreadsInRanked : 'Unavailable') + ' |',
+            '| Sufficient IEX volume (ranked) | ' + (Number.isInteger(picks.diagnostics?.sufficientIexVolumeInRanked) ? picks.diagnostics.sufficientIexVolumeInRanked : 'Unavailable') + ' |',
+            '| Liquidity passes (ranked) | ' + (Number.isInteger(picks.diagnostics?.liquidityPassInRanked) ? picks.diagnostics.liquidityPassInRanked : 'Unavailable') + ' |',
+            '| Eligible symbols | ' + (picks.eligible.map(clean).join(', ') || 'None') + ' |',
+            '| Research market date | ' + clean(picks.marketDate) + ' |',
+            '| Research timestamp | ' + clean(picks.asOf) + ' |',
+            '| Paper engine | Preview only |',
+            '| Alpaca market open | ' + Boolean(scan.marketOpen) + ' |',
+            '| Orders submitted | 0 |',
+            '| Paper scan events | ' + scan.events.length + ' |',
+            '',
+            '### Research warnings',
+            ...(Array.isArray(picks.warnings) && picks.warnings.length ? picks.warnings.map(w => '- ' + clean(w)) : ['- None reported']),
+            '',
+            '### Paper scan outcomes',
+            ...(scan.events.length ? scan.events.slice(0, 15).map(e => '- ' + clean(e.symbol) + ': ' + clean(e.outcome) + ' — ' + clean(e.message)) : ['- No events returned']),
+            '',
+            '> This is not a validated trading signal or an order execution test.'
+          ];
+          console.log('Eligible picks:', picks.eligible.length, 'Market open:', Boolean(scan.marketOpen), 'Paper events:', scan.events.length, 'Orders:', scan.submitted);
+          if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          NODE
+          echo "Read-only MarketClarity diagnostics completed. No orders submitted."

@@ -40,9 +40,12 @@ export function assessSwing(
   if (!quote || !trade || !quote.ap || !quote.bp || !trade.p) {
     return {reason: 'Fresh two-sided live quotes are unavailable.'};
   }
-  const age = Math.max(now - Date.parse(quote.t), now - Date.parse(trade.t));
-  if (!Number.isFinite(age) || age < -60000 || age > 5 * 60000) {
-    return {reason: 'Market-data timestamp is stale.'};
+  // Validate both timestamps independently: Math.max can hide an invalid
+  // timestamp when the other is valid. Never trade on future or stale prints.
+  const quoteAge = now - Date.parse(quote.t);
+  const tradeAge = now - Date.parse(trade.t);
+  if (![quoteAge, tradeAge].every(age => Number.isFinite(age) && age >= -60000 && age <= 5 * 60000)) {
+    return {reason: 'Trade or quote timestamp is invalid, future-dated, or stale.'};
   }
   const ask = quote.ap, bid = quote.bp;
   if (ask < 5 || (ask - bid) / ask > 0.004 || bid >= ask) {
@@ -56,10 +59,13 @@ export function assessSwing(
     return {reason: 'The entry is below trend support or too extended above its 20-day average.'};
   }
   const limit = round(ask * 1.0015);
+  if (limit <= ask || (limit - ask) / ask > 0.0025) {
+    return {reason: 'Limit-entry rounding or slippage bound failed.'};
+  }
   const stop = round(ask - 1.5 * t.atr14);
   const target = round(ask + 3 * t.atr14);
   const perShareRisk = limit - stop;
-  if (stop <= 0 || perShareRisk <= 0 || target <= limit) {
+  if (stop <= 0 || perShareRisk <= 0 || target <= limit || (target-limit)/perShareRisk < 1.8) {
     return {reason: 'A safe bracket order cannot be constructed.'};
   }
   // The bot's risk budget belongs to the 5% trading sleeve, not the 95% core.
