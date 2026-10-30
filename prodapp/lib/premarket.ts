@@ -5,7 +5,7 @@ export type EvidenceStatus='fresh'|'stale'|'missing';
 type Bar={t:string;o:number;h:number;l:number;c:number;v:number};
 type Grouped={results?:Array<{T:string;o:number;c:number;v:number}>};
 type Snap={latestTrade?:{p:number;t:string};latestQuote?:{ap:number;bp:number;t:string};minuteBar?:{c:number;v:number;t:string};prevDailyBar?:{c:number}};
-type SnapResponse={snapshots?:Record<string,Snap>};
+type SnapResponse={snapshots?:Record<string,Snap>} & Record<string,unknown>;
 type BarResponse={bars?:Record<string,Bar[]>;next_page_token?:string|null};
 type NewsResponse={news?:Array<{id:number;headline:string;created_at:string;url?:string;symbols?:string[];source?:string}>};
 export type PremarketCandidate={
@@ -24,7 +24,7 @@ export type PremarketReport={
  feed:'Alpaca IEX single-exchange, Massive prior completed session';
  ranked:PremarketCandidate[];sectors:PremarketSector[];news:PremarketHeadline[];
  watchlist:string[];candidateUniverse:number;freshCandidates:number;
- snapshotDiagnostics:{requested:number;returned:number;missing:number;tradeAbsent:number;tradeInvalidTimestamp:number;tradePreviousSession:number;tradeCurrentSession:number;tradeFresh:number;tradeStaleCurrentSession:number;quoteAbsent:number;quoteInvalidTimestamp:number;quotePreviousSession:number;quoteCurrentSession:number;quoteFresh:number;quoteStaleCurrentSession:number;failedBatches:number};
+ snapshotDiagnostics:{requested:number;returned:number;missing:number;tradeAbsent:number;tradeInvalidTimestamp:number;tradePreviousSession:number;tradeCurrentSession:number;tradeFresh:number;tradeStaleCurrentSession:number;quoteAbsent:number;quoteInvalidTimestamp:number;quotePreviousSession:number;quoteCurrentSession:number;quoteFresh:number;quoteStaleCurrentSession:number;failedBatches:number;wrappedBatches:number;directBatches:number;unrecognizedBatches:number};
  warnings:string[];readOnly:true;ordersSubmitted:0;
 };
 const ET='America/New_York';
@@ -164,9 +164,33 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
  const all:Record<string,Snap>={};
  // Avoid over-claiming completeness: Alpaca snapshots only cover IEX prints/quotes.
  const results=await Promise.allSettled(chunks.map(c=>dataGet<SnapResponse>('/v2/stocks/snapshots?symbols='+encodeURIComponent(c.join(','))+'&feed=iex')));
+ let wrappedBatches=0,directBatches=0,unrecognizedBatches=0;
  for(let i=0;i<results.length;i++){
-  const r=results[i];if(r.status==='fulfilled')Object.assign(all,r.value.snapshots||{});
-  else warnings.push('Alpaca IEX snapshot batch '+(i+1)+' unavailable; partial results only.');
+  const r=results[i];
+  if(r.status==='rejected'){
+   warnings.push('Alpaca IEX snapshot batch '+(i+1)+' unavailable; partial results only.');
+   continue;
+  }
+  const payload=r.value;
+  // Alpaca multi-symbol snapshots can be represented as a direct symbol map
+  // or under a snapshots key. Accept only explicitly requested ticker keys.
+  const wrapped=payload?.snapshots;
+  const source=wrapped&&typeof wrapped==='object'&&!Array.isArray(wrapped)?wrapped:payload;
+  if(source&&typeof source==='object'&&!Array.isArray(source)){
+   let matched=0;
+   for(const ticker of chunks[i]){
+    const snap=(source as Record<string,unknown>)[ticker];
+    if(snap&&typeof snap==='object'&&!Array.isArray(snap)){
+     all[ticker]=snap as Snap;
+     matched++;
+    }
+   }
+   if(wrapped)wrappedBatches++;else directBatches++;
+   if(!matched)warnings.push('Snapshot batch '+(i+1)+' returned no requested symbol records.');
+  }else{
+   unrecognizedBatches++;
+   warnings.push('Snapshot batch '+(i+1)+' returned an unrecognized response structure.');
+  }
  }
  // Aggregate timestamp diagnostics across the entire requested candidate universe.
  // Do not expose raw brokerage payloads or loosen any screening gates.
@@ -176,7 +200,8 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
   tradeCurrentSession:0,tradeFresh:0,tradeStaleCurrentSession:0,
   quoteAbsent:0,quoteInvalidTimestamp:0,quotePreviousSession:0,
   quoteCurrentSession:0,quoteFresh:0,quoteStaleCurrentSession:0,
-  failedBatches:results.filter(x=>x.status==='rejected').length
+  failedBatches:results.filter(x=>x.status==='rejected').length,
+  wrappedBatches,directBatches,unrecognizedBatches
  };
  for(const ticker of selections){
   const snap=all[ticker];
