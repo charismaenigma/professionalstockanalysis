@@ -24,6 +24,7 @@ export type PremarketReport={
  feed:'Alpaca IEX single-exchange, Massive prior completed session';
  ranked:PremarketCandidate[];sectors:PremarketSector[];news:PremarketHeadline[];
  watchlist:string[];candidateUniverse:number;freshCandidates:number;
+ snapshotDiagnostics:{requested:number;returned:number;missing:number;tradeAbsent:number;tradeInvalidTimestamp:number;tradePreviousSession:number;tradeCurrentSession:number;tradeFresh:number;tradeStaleCurrentSession:number;quoteAbsent:number;quoteInvalidTimestamp:number;quotePreviousSession:number;quoteCurrentSession:number;quoteFresh:number;quoteStaleCurrentSession:number;failedBatches:number};
  warnings:string[];readOnly:true;ordersSubmitted:0;
 };
 const ET='America/New_York';
@@ -167,6 +168,33 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
   const r=results[i];if(r.status==='fulfilled')Object.assign(all,r.value.snapshots||{});
   else warnings.push('Alpaca IEX snapshot batch '+(i+1)+' unavailable; partial results only.');
  }
+ // Aggregate timestamp diagnostics across the entire requested candidate universe.
+ // Do not expose raw brokerage payloads or loosen any screening gates.
+ const snapshotDiagnostics={
+  requested:selections.length,returned:0,missing:0,
+  tradeAbsent:0,tradeInvalidTimestamp:0,tradePreviousSession:0,
+  tradeCurrentSession:0,tradeFresh:0,tradeStaleCurrentSession:0,
+  quoteAbsent:0,quoteInvalidTimestamp:0,quotePreviousSession:0,
+  quoteCurrentSession:0,quoteFresh:0,quoteStaleCurrentSession:0,
+  failedBatches:results.filter(x=>x.status==='rejected').length
+ };
+ for(const ticker of selections){
+  const snap=all[ticker];
+  if(!snap){snapshotDiagnostics.missing++;continue;}
+  snapshotDiagnostics.returned++;
+  for(const kind of ['trade','quote'] as const){
+   const item=kind==='trade'?snap.latestTrade:snap.latestQuote;
+   if(!item){snapshotDiagnostics[kind==='trade'?'tradeAbsent':'quoteAbsent']++;continue;}
+   const ms=Date.parse(item.t||'');
+   if(!Number.isFinite(ms)){snapshotDiagnostics[kind==='trade'?'tradeInvalidTimestamp':'quoteInvalidTimestamp']++;continue;}
+   if(!sameMarketDay(item.t,today)){snapshotDiagnostics[kind==='trade'?'tradePreviousSession':'quotePreviousSession']++;continue;}
+   snapshotDiagnostics[kind==='trade'?'tradeCurrentSession':'quoteCurrentSession']++;
+   const age=(now.getTime()-ms)/60000;
+   if(age>=-1&&age<=(kind==='trade'?15:10))
+    snapshotDiagnostics[kind==='trade'?'tradeFresh':'quoteFresh']++;
+   else snapshotDiagnostics[kind==='trade'?'tradeStaleCurrentSession':'quoteStaleCurrentSession']++;
+  }
+ }
  const nowEt=etPremarketDateTime(now);
  const bars:Record<string,Bar[]>={};
  if(nowEt.hour>=4&&nowEt.hour<10&&selections.length){
@@ -221,5 +249,5 @@ export async function runPremarketResearch(phase:PremarketPhase,now=new Date()):
  if(!freshCount)warnings.push('No ranked watchlist stock has a fresh same-session IEX trade; no current gap ranking is validated.');
  return {version:'premarket-research-v0.1',phase,asOf:now.toISOString(),marketDate:today,previousSession:prior.date,
   feed:'Alpaca IEX single-exchange, Massive prior completed session',
-  ranked,sectors,news,watchlist,candidateUniverse:selections.length,freshCandidates:freshCount,warnings,readOnly:true,ordersSubmitted:0};
+  ranked,sectors,news,watchlist,candidateUniverse:selections.length,freshCandidates:freshCount,snapshotDiagnostics,warnings,readOnly:true,ordersSubmitted:0};
 }
