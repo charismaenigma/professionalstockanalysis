@@ -26,6 +26,7 @@ export async function POST(request:NextRequest){
   // The universe covers all evaluated seeds; ranked covers only the final top 15.
   const diagnostics={
    candidateUniverse:report.candidateUniverse,
+   snapshot:report.snapshotDiagnostics,
    rankedReturned:report.ranked.length,
    freshTradesInRanked:report.ranked.filter(row=>row.evidence==='fresh').length,
    missingTradesInRanked:report.ranked.filter(row=>row.evidence==='missing').length,
