@@ -2,16 +2,19 @@ name: MarketClarity Paper Scanner
 
 on:
   schedule:
-    # Three scans near US trading hours. Alpaca market clock blocks closed sessions.
+    # Read-only preview scans near US trading hours (UTC).
     - cron: '15 15,17,19 * * 1-5'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Trigger authenticated PAPER scan
+      - name: Trigger authenticated read-only PAPER preview
         env:
           DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
           SCAN_SECRET: ${{ secrets.MARKETCLARITY_CRON_SECRET }}
@@ -22,4 +25,4 @@ jobs:
           fi
           curl --fail --show-error --silent --max-time 110 \
             --header "Authorization: Bearer $SCAN_SECRET" \
-            "${DEPLOYMENT_URL%/}/api/paper/run"
+            "${DEPLOYMENT_URL%/}/api/paper/run?dry_run=1"
