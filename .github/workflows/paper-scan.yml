@@ -2,7 +2,6 @@ name: MarketClarity Paper Scanner
 
 on:
   schedule:
-    # Read-only preview scans near US trading hours (UTC).
     - cron: '15 15,17,19 * * 1-5'
   workflow_dispatch:
 
@@ -16,13 +15,23 @@ jobs:
     steps:
       - name: Trigger authenticated read-only PAPER preview
         env:
-          DEPLOYMENT_URL: ${{ vars.MARKETCLARITY_URL }}
           SCAN_SECRET: ${{ secrets.MARKETCLARITY_CRON_SECRET }}
         run: |
-          if [ -z "$DEPLOYMENT_URL" ] || [ -z "$SCAN_SECRET" ]; then
-            echo "Configure MARKETCLARITY_URL and MARKETCLARITY_CRON_SECRET in repository settings."
+          if [ -z "$SCAN_SECRET" ]; then
+            echo "MARKETCLARITY_CRON_SECRET is missing."
             exit 1
           fi
+          # Production alias, not an old deployment URL.
           curl --fail --show-error --silent --max-time 110 \
             --header "Authorization: Bearer $SCAN_SECRET" \
-            "${DEPLOYMENT_URL%/}/api/paper/run?dry_run=1"
+            --header "Accept: application/json" \
+            --output scan-response.json \
+            "https://marketclarity-live.vercel.app/api/paper/run?dry_run=1"
+          python3 - <<'PY'
+          import json
+          with open("scan-response.json", encoding="utf-8") as f:
+              data = json.load(f)
+          if data.get("mode") != "preview" or data.get("submitted") != 0 or not isinstance(data.get("events"), list):
+              raise SystemExit("Unexpected response: not a validated paper preview.")
+          print(json.dumps(data, indent=2))
+          PY
