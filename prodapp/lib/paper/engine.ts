@@ -22,7 +22,7 @@ export interface ScanResult {
 }
 function dateKey() { return new Date().toISOString().slice(0, 10).replaceAll('-', ''); }
 
-export async function runPaperScan(execute: boolean): Promise<ScanResult> {
+export async function runPaperScan(execute: boolean, symbolIndex?: number): Promise<ScanResult> {
   if (!liveResearchConfigured()) throw new Error('MASSIVE_API_KEY is required: demo data cannot place orders.');
   if (execute && !paperOrdersEnabled()) {
     throw new Error('Paper orders are disabled. Set PAPER_TRADE_ENABLED=true after dry-run review.');
@@ -61,7 +61,12 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
   for (const order of openOrders) if (order.side === 'buy') active.add(order.symbol);
   const attempted = new Set(recentOrders.map(o => o.client_order_id));
   let remainingCash = cash;
-  for (const symbol of watchlist.symbols.slice(0, 5)) {
+  const symbols = watchlist.symbols.slice(0, 5);
+  if (symbolIndex !== undefined && (!Number.isInteger(symbolIndex) || symbolIndex < 0 || symbolIndex >= symbols.length)) {
+    result.events.push({symbol: '—', outcome: 'error', message: 'Requested watchlist index is unavailable.'});
+    return result;
+  }
+  for (const symbol of symbolIndex === undefined ? symbols : [symbols[symbolIndex]]) {
     if (active.has(symbol)) {
       result.events.push({symbol, outcome: 'skipped', message: 'Existing position or open buy order.'});
       continue;
@@ -105,7 +110,8 @@ export async function runPaperScan(execute: boolean): Promise<ScanResult> {
       result.submitted += 1;
       result.events.push({symbol, outcome: 'submitted', message: 'Paper-only bracket order submitted; fills are not guaranteed.', score: draft.score, qty: draft.qty});
     } catch (e) {
-      result.events.push({symbol, outcome: 'error', message: e instanceof Error ? e.message : 'Unknown provider error.'});
+      const message = e instanceof Error ? e.message : 'Unknown provider error.';
+      result.events.push({symbol, outcome: 'error', message: message.includes('MASSIVE_RATE_LIMIT') || message.includes('(429)') ? 'Not evaluated: Massive API rate limit. Retry later.' : message});
     }
   }
   return result;
