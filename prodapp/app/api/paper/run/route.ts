@@ -19,7 +19,12 @@ export async function GET(request: NextRequest) {
   if (!cronAuthorized(request)) return unauthorized();
   // Explicit scheduled preview: never submits orders, regardless of trading flags.
   if (request.nextUrl.searchParams.get('dry_run') === '1') {
-    try { return NextResponse.json(await runPaperScan(false), {headers: {'Cache-Control': 'no-store'}}); }
+    try {
+      const rawIndex = request.nextUrl.searchParams.get('index');
+      const index = rawIndex === null ? undefined : Number(rawIndex);
+      if (rawIndex !== null && (!/^[0-4]$/.test(rawIndex))) return NextResponse.json({error:'Invalid watchlist index'}, {status:400});
+      return NextResponse.json(await runPaperScan(false, index), {headers: {'Cache-Control': 'no-store'}});
+    }
     catch (e) { return NextResponse.json({error:e instanceof Error ? e.message:'Preview scan failed'}, {status:502}); }
   }
   if (!autoScanEnabled() || !paperOrdersEnabled()) {
