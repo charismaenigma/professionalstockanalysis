@@ -11,7 +11,8 @@ export function controlAuthorized(request: Request) {
 }
 export function cronAuthorized(request: Request) {
   const h = request.headers.get('authorization');
-  return sameSecret(h?.startsWith('Bearer ') ? h.slice(7) : null, process.env.CRON_SECRET);
+  // Paper automation has its own credential; never reuse the Radar CRON_SECRET.
+  return sameSecret(h?.startsWith('Bearer ') ? h.slice(7) : null, process.env.MARKETCLARITY_CRON_SECRET);
 }
 export const unauthorized = () =>
   Response.json({error: 'Access denied. Enter the MarketClarity control token.'}, {status: 401});
