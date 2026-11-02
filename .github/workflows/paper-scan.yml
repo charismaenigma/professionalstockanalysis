@@ -11,9 +11,9 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 12
     steps:
-      - name: Trigger authenticated read-only PAPER preview
+      - name: Scan watchlist sequentially without paper orders
         env:
           SCAN_SECRET: ${{ secrets.MARKETCLARITY_CRON_SECRET }}
         run: |
@@ -21,17 +21,23 @@ jobs:
             echo "MARKETCLARITY_CRON_SECRET is missing."
             exit 1
           fi
-          # Production alias, not an old deployment URL.
-          curl --fail --show-error --silent --max-time 110 \
-            --header "Authorization: Bearer $SCAN_SECRET" \
-            --header "Accept: application/json" \
-            --output scan-response.json \
-            "https://marketclarity-live.vercel.app/api/paper/run?dry_run=1"
-          python3 - <<'PY'
+          for index in 0 1 2 3 4; do
+            echo "Evaluating watchlist slot $index"
+            curl --fail --show-error --silent --max-time 58 \
+              --header "Authorization: Bearer $SCAN_SECRET" \
+              --header "Accept: application/json" \
+              --output scan-response.json \
+              "https://marketclarity-live.vercel.app/api/paper/run?dry_run=1&index=$index"
+            python3 - <<'PY'
           import json
           with open("scan-response.json", encoding="utf-8") as f:
               data = json.load(f)
           if data.get("mode") != "preview" or data.get("submitted") != 0 or not isinstance(data.get("events"), list):
               raise SystemExit("Unexpected response: not a validated paper preview.")
-          print(json.dumps(data, indent=2))
+          for event in data["events"]:
+              print(json.dumps(event))
+              if event.get("outcome") == "error":
+                  print("INCOMPLETE: this symbol was not evaluated successfully.")
           PY
+            if [ "$index" -lt 4 ]; then sleep 65; fi
+          done
